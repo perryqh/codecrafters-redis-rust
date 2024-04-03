@@ -1,22 +1,25 @@
 // Uncomment this block to pass the first stage
-use std::{io::Write, net::TcpListener};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
 
-use anyhow::Context;
+async fn process_socket(mut socket: TcpStream) -> anyhow::Result<()> {
+    let mut buf = [0; 512];
+    while let Ok(byte_count) = socket.read(&mut buf).await {
+        if byte_count == 0 {
+            break;
+        }
+        socket.write_all(b"+PONG\r\n").await?;
+    }
 
-fn main() -> anyhow::Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:6379").context("unable to bind tcp listener")?;
-    
-    for stream in listener.incoming() {
-         match stream {
-             Ok(mut stream) => {
-                 println!("accepted new connection");
-                 let pong = b"+PONG\r\n";
-                 stream.write_all(pong).context("unable to write to stream")?;
-             }
-             Err(e) => {
-                 println!("error: {}", e);
-             }
-         }
-     }
-     Ok(())
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let listener = TcpListener::bind("127.0.0.1:6379").await?;
+
+    loop {
+        let (socket, _) = listener.accept().await?;
+        process_socket(socket).await?;
+    }
 }
