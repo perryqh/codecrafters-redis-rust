@@ -4,6 +4,7 @@ use crate::{
     store::Store,
 };
 use anyhow::{bail, ensure};
+use std::time::Duration;
 
 pub enum Command {
     Echo(EchoCommand),
@@ -27,11 +28,19 @@ pub struct SetCommand {
     pub key: String,
     pub value: String,
     pub store: Store,
+    pub expiry_in_milliseconds: Option<u64>,
 }
+
+const DEFAULT_EXPIRY: i64 = 1000 * 60 * 60 * 24 * 7; // 1 week
 
 impl SetCommand {
     fn response_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        self.store.set(self.key.clone(), self.value.clone().into());
+        let expiry = self.expiry_in_milliseconds.unwrap_or(DEFAULT_EXPIRY as u64);
+        self.store.set(
+            self.key.clone(),
+            self.value.clone().into(),
+            Duration::from_millis(expiry),
+        );
         Ok(b"+OK\r\n".to_vec())
     }
 }
@@ -105,7 +114,7 @@ fn build_command_from_array(array: RESPArray, store: Store) -> anyhow::Result<Co
             }
         }
         "SET" => {
-            ensure!(array.data.len() == 3, "set 2 arguments expected");
+            ensure!(array.data.len() >= 3, "set 2 or more arguments expected");
             let key = array
                 .data
                 .get(1)
@@ -114,11 +123,26 @@ fn build_command_from_array(array: RESPArray, store: Store) -> anyhow::Result<Co
                 .data
                 .get(2)
                 .ok_or_else(|| anyhow::anyhow!("Expected value"))?;
+            let expiry = if array.data.len() >= 5 {
+                let expiry = array
+                    .data
+                    .get(4)
+                    .ok_or_else(|| anyhow::anyhow!("Expected expiry"))?;
+                match expiry {
+                    RESPValue::Integer(expiry) => Some(*expiry as u64),
+                    RESPValue::BulkString(expiry) => Some(expiry.data.parse::<u64>()?),
+                    _ => bail!("Expected RESPValue::Integer found: {:?}", expiry),
+                }
+            } else {
+                Some(DEFAULT_EXPIRY as u64)
+            };
+
             match (key, value) {
                 (RESPValue::BulkString(key), RESPValue::BulkString(value)) => {
                     Ok(Command::Set(SetCommand {
                         key: key.data.clone(),
                         value: value.data.clone(),
+                        expiry_in_milliseconds: expiry,
                         store,
                     }))
                 }
@@ -149,6 +173,8 @@ fn build_command_from_array(array: RESPArray, store: Store) -> anyhow::Result<Co
 
 #[cfg(test)]
 mod tests {
+    use tokio::time::sleep;
+
     use super::*;
 
     #[tokio::test]
@@ -198,6 +224,7 @@ mod tests {
             Command::Set(ref set) => {
                 assert_eq!(set.key, "key");
                 assert_eq!(set.value, "value");
+                assert_eq!(set.expiry_in_milliseconds, Some(DEFAULT_EXPIRY as u64));
             }
             _ => panic!("Expected set"),
         }
@@ -213,7 +240,11 @@ mod tests {
     async fn test_parse_command_get() -> anyhow::Result<()> {
         let command = b"*2\r\n$3\r\nget\r\n$3\r\nkey\r\n";
         let store = Store::new();
-        store.set("key".to_string(), "value".into());
+        store.set(
+            "key".to_string(),
+            "value".into(),
+            Duration::from_millis(DEFAULT_EXPIRY as u64),
+        );
         let command = parse_command(command, store)?;
         match command {
             Command::Get(ref get) => {
@@ -236,6 +267,51 @@ mod tests {
             }
             _ => panic!("Expected get"),
         }
+        assert_eq!(command.response_bytes()?, b"$-1\r\n");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_parse_command_set_with_expiry() -> anyhow::Result<()> {
+        let command = b"*5\r\n$3\r\nset\r\n$3\r\nkey\r\n$5\r\nvalue\r\n$2\r\nPX\r\n$4\r\n1000\r\n";
+        let store = Store::new();
+        let command = parse_command(command, store.clone())?;
+        match command {
+            Command::Set(ref set) => {
+                dbg!(set.expiry_in_milliseconds);
+                assert_eq!(set.key, "key");
+                assert_eq!(set.value, "value");
+                assert_eq!(set.expiry_in_milliseconds, Some(1000));
+            }
+            _ => panic!("Expected set"),
+        }
+        assert_eq!(command.response_bytes()?, b"+OK\r\n");
+        assert_eq!(
+            String::from_utf8(store.get("key").unwrap().to_vec()).unwrap(),
+            "value"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_parse_command_set_expired() -> anyhow::Result<()> {
+        let command = b"*5\r\n$3\r\nset\r\n$3\r\nkey\r\n$5\r\nvalue\r\n$2\r\nPX\r\n$1\r\n1\r\n";
+        let store = Store::new();
+        let command = parse_command(command, store.clone())?;
+        match command {
+            Command::Set(ref set) => {
+                assert_eq!(set.key, "key");
+                assert_eq!(set.value, "value");
+                assert_eq!(set.expiry_in_milliseconds, Some(1));
+            }
+            _ => panic!("Expected set"),
+        }
+        assert_eq!(command.response_bytes()?, b"+OK\r\n");
+        assert_eq!(store.get("key"), Some("value".into()));
+
+        sleep(Duration::from_secs(1)).await;
+        let command = b"*2\r\n$3\r\nget\r\n$3\r\nkey\r\n";
+        let command = parse_command(command, store)?;
         assert_eq!(command.response_bytes()?, b"$-1\r\n");
         Ok(())
     }

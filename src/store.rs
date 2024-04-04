@@ -1,10 +1,16 @@
 use bytes::Bytes;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-type Db = Arc<Mutex<HashMap<String, Bytes>>>;
+struct ValueWithExpiry {
+    value: Bytes,
+    expiry: Instant,
+}
 
-#[derive(Clone, Debug, Default)]
+type Db = Arc<Mutex<HashMap<String, ValueWithExpiry>>>;
+
+#[derive(Clone, Default)]
 pub struct Store {
     data: Db,
 }
@@ -16,14 +22,22 @@ impl Store {
         }
     }
 
-    pub fn set(&self, key: String, value: Bytes) {
+    pub fn set(&self, key: String, value: Bytes, expiry_duration: Duration) {
         let mut data = self.data.lock().unwrap();
-        data.insert(key, value);
+        let expiry = Instant::now() + expiry_duration;
+        data.insert(key, ValueWithExpiry { value, expiry });
     }
 
     pub fn get(&self, key: &str) -> Option<Bytes> {
-        let data = self.data.lock().unwrap();
-        data.get(key).cloned()
+        let mut data = self.data.lock().unwrap();
+        if let Some(value_with_expiry) = data.get(key) {
+            if Instant::now() < value_with_expiry.expiry {
+                return Some(value_with_expiry.value.clone());
+            } else {
+                data.remove(key);
+            }
+        }
+        None
     }
 
     pub fn del(&self, key: &str) {
@@ -31,5 +45,3 @@ impl Store {
         data.remove(key);
     }
 }
-
-// https://tokio.rs/tokio/tutorial/shared-state

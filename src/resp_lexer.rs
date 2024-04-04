@@ -5,6 +5,7 @@ use bytes::BytesMut;
 pub enum RESPValue {
     BulkString(RESPBulkString),
     Array(RESPArray),
+    Integer(i64),
 }
 
 #[derive(Debug, PartialEq)]
@@ -38,8 +39,19 @@ impl Lexer {
         match self.data[current_position] {
             b'*' => self.lex_array(current_position + 1),
             b'$' => self.lex_bulk_string(current_position + 1),
+            b':' => self.lex_int_value(current_position + 1),
             _ => Err(anyhow::anyhow!("Invalid RESP value: {:?}", self.data)),
         }
+    }
+
+    fn lex_int_value(&self, current_position: usize) -> anyhow::Result<(RESPValue, usize)> {
+        let (line, current_position) = match self.read_until_crlf(current_position) {
+            Some((line, current_position)) => (line, current_position),
+            None => return Err(anyhow::anyhow!("Invalid integer format {:?}", self.data)),
+        };
+
+        let int_value = self.lex_int(line)?;
+        Ok((RESPValue::Integer(int_value), current_position))
     }
 
     fn lex_bulk_string(&self, current_position: usize) -> anyhow::Result<(RESPValue, usize)> {
