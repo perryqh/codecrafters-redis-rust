@@ -1,5 +1,6 @@
 // https://redis.io/docs/reference/protocol-spec/
-use anyhow::ensure;
+use crate::resp_lexer::{Lexer, RESPArray, RESPValue};
+use anyhow::{bail, ensure};
 
 pub enum Command {
     Echo(EchoCommand),
@@ -33,89 +34,41 @@ impl EchoCommand {
 }
 
 pub fn parse_command(command: &[u8]) -> anyhow::Result<Command> {
-    let command_string = std::str::from_utf8(command)?;
-    let parts = command_string.split("\r\n").filter(|part| !part.is_empty());
-    build_command_from_parts(parts)
-}
-
-pub fn build_command_from_parts<'a>(
-    mut parts: impl Iterator<Item = &'a str>,
-) -> anyhow::Result<Command> {
-    let command_type = parts
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("Expected command"))?;
-    match command_type
-        .chars()
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("Expected char prefix"))?
-    {
-        '*' => {
-            let num_args = command_type
-                .chars()
-                .skip(1)
-                .collect::<String>()
-                .parse::<usize>()?;
-            let mut command_parts = vec![];
-            for _ in 0..num_args {
-                let arg_type = parts
-                    .next()
-                    .ok_or_else(|| anyhow::anyhow!("Expected argument type"))?;
-                ensure!(
-                    arg_type.starts_with('$'),
-                    "Expected argument type to start with $, but is '{}'",
-                    arg_type
-                );
-                let arg_len = arg_type
-                    .chars()
-                    .skip(1)
-                    .collect::<String>()
-                    .parse::<usize>()?;
-                let arg = parts
-                    .next()
-                    .ok_or_else(|| anyhow::anyhow!("Expected argument"))?;
-                ensure!(
-                    arg.len() == arg_len,
-                    "Argument length does not match expected length. Expected: {}, Actual: {}",
-                    arg_len,
-                    arg.len()
-                );
-                command_parts.push(arg);
-            }
-            build_command_from_array(command_parts)
-        }
-        _ => panic!("'{}' Not implemented", command_type),
+    let mut lexer = Lexer::new(command.into());
+    let value = lexer.lex()?;
+    match value {
+        RESPValue::Array(array) => build_command_from_array(array),
+        _ => bail!("Expected RESPValue::Array found: {:?}", value),
     }
 }
 
-fn build_command_from_array(parts: Vec<&str>) -> anyhow::Result<Command> {
-    let command = *parts
+fn build_command_from_array(array: RESPArray) -> anyhow::Result<Command> {
+    let command = array
+        .data
         .first()
         .ok_or_else(|| anyhow::anyhow!("Expected command"))?;
-    match command {
+    let command = match command {
+        RESPValue::BulkString(command) => command,
+        _ => bail!("Expected RESPValue::BulkString found: {:?}", command),
+    };
+
+    match command.data.as_str() {
         "ping" => Ok(Command::Ping(PingCommand)),
         "echo" => {
-            let message = parts
+            ensure!(array.data.len() == 2, "echo 1 argument expected");
+            let message = array
+                .data
                 .get(1)
                 .ok_or_else(|| anyhow::anyhow!("Expected message"))?;
-            Ok(Command::Echo(EchoCommand {
-                message: message.to_string(),
-            }))
+            match message {
+                RESPValue::BulkString(message) => Ok(Command::Echo(EchoCommand {
+                    message: message.data.clone(),
+                })),
+                _ => bail!("Expected RESPValue::BulkString found: {:?}", message),
+            }
         }
-        _ => panic!("Not implemented"),
+        _ => bail!("Not implemented"),
     }
-}
-
-enum RESPDataType {
-    BulkString(RESPBulkString),
-    Array(RESPArray),
-}
-
-struct RESPBulkString {
-    data: String,
-}
-
-struct RESPArray {
-    data: Vec<RESPDataType>,
 }
 
 #[cfg(test)]
