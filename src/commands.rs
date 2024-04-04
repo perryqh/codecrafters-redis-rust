@@ -52,9 +52,9 @@ fn build_command_from_array(array: RESPArray) -> anyhow::Result<Command> {
         _ => bail!("Expected RESPValue::BulkString found: {:?}", command),
     };
 
-    match command.data.as_str() {
-        "ping" => Ok(Command::Ping(PingCommand)),
-        "echo" => {
+    match command.data.to_uppercase().as_str() {
+        "PING" => Ok(Command::Ping(PingCommand)),
+        "ECHO" => {
             ensure!(array.data.len() == 2, "echo 1 argument expected");
             let message = array
                 .data
@@ -78,6 +78,18 @@ mod tests {
     #[tokio::test]
     async fn test_parse_command_ping() -> anyhow::Result<()> {
         let command = b"*1\r\n$4\r\nping\r\n";
+        let command = parse_command(command)?;
+        match command {
+            Command::Ping(_) => {}
+            _ => panic!("Expected ping"),
+        }
+        assert_eq!(command.response_bytes()?, b"+PONG\r\n");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_parse_command_ping_with_mixed_case() -> anyhow::Result<()> {
+        let command = b"*1\r\n$4\r\npInG\r\n";
         let command = parse_command(command)?;
         match command {
             Command::Ping(_) => {}

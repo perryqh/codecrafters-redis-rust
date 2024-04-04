@@ -100,10 +100,6 @@ impl Lexer {
             current_position = pos;
         }
 
-        dbg!(&self.data);
-        dbg!(current_position);
-        dbg!(array_length);
-
         Ok((
             RESPValue::Array(RESPArray { data: array }),
             current_position,
