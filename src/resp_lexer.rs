@@ -8,9 +8,44 @@ pub enum RESPValue {
     Integer(i64),
 }
 
+pub trait Serialize {
+    fn serialize(&self) -> Vec<u8>;
+}
+
 #[derive(Debug, PartialEq)]
 pub struct RESPBulkString {
     pub data: String,
+}
+
+impl RESPSimpleString {
+    pub fn new(data: &str) -> Self {
+        Self { data: data.to_string() }
+    }
+}
+
+impl RESPBulkString {
+    pub fn new(data: &str) -> Self {
+        Self { data: data.to_string() }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct RESPSimpleString {
+    pub data: String,
+}
+
+impl Serialize for RESPSimpleString {
+    fn serialize(&self) -> Vec<u8> {
+        let serialized = format!("+{}\r\n", self.data);
+        serialized.into_bytes()
+    }
+}
+
+impl Serialize for RESPBulkString {
+    fn serialize(&self) -> Vec<u8> {
+        let serialized = format!("${}\r\n{}\r\n", self.data.len(), self.data);
+        serialized.into_bytes()
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -171,6 +206,16 @@ mod tests {
                 ]
             })
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_serialize_bulk_string() -> anyhow::Result<()> {
+        let input = "role:master".to_string();
+        let bulk_string = RESPBulkString { data: input };
+        let expected = b"$11\r\nrole:master\r\n";
+        assert_eq!(bulk_string.serialize(), expected);
 
         Ok(())
     }

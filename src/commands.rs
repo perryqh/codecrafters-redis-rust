@@ -1,6 +1,6 @@
 // https://redis.io/docs/reference/protocol-spec/
 use crate::{
-    resp_lexer::{Lexer, RESPArray, RESPValue},
+    resp_lexer::{Lexer, RESPArray, RESPBulkString, RESPSimpleString, RESPValue, Serialize},
     store::Store,
 };
 use anyhow::{bail, ensure};
@@ -11,6 +11,7 @@ pub enum Command {
     Ping(PingCommand),
     Set(SetCommand),
     Get(GetCommand),
+    Info(InfoCommand),
 }
 
 impl Command {
@@ -20,7 +21,19 @@ impl Command {
             Command::Ping(command) => command.response_bytes(),
             Command::Set(command) => command.response_bytes(),
             Command::Get(command) => command.response_bytes(),
+            Command::Info(command) => command.response_bytes(),
         }
+    }
+}
+
+pub struct InfoCommand {
+    pub kind: String,
+}
+
+impl InfoCommand {
+    fn response_bytes(&self) -> anyhow::Result<Vec<u8>> {
+        let bulk_string = RESPBulkString::new("role:master");
+        Ok(bulk_string.serialize())
     }
 }
 
@@ -41,7 +54,7 @@ impl SetCommand {
             self.value.clone().into(),
             Duration::from_millis(expiry),
         );
-        Ok(b"+OK\r\n".to_vec())
+        Ok(RESPSimpleString::new("OK").serialize())
     }
 }
 
@@ -55,7 +68,7 @@ impl GetCommand {
         match self.store.get(&self.key) {
             Some(value) => {
                 let value = String::from_utf8(value.to_vec()).unwrap_or_default();
-                Ok(format!("${}\r\n{}\r\n", value.len(), value).into_bytes())
+                Ok(RESPBulkString::new(&value).serialize())
             }
             None => Ok(b"$-1\r\n".to_vec()),
         }
@@ -69,13 +82,13 @@ pub struct EchoCommand {
 pub struct PingCommand;
 impl PingCommand {
     fn response_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        Ok(b"+PONG\r\n".to_vec())
+        Ok(RESPSimpleString::new("PONG").serialize())
     }
 }
 
 impl EchoCommand {
     fn response_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        Ok(format!("+{}\r\n", self.message).into_bytes())
+        Ok(RESPSimpleString::new(&self.message).serialize())
     }
 }
 
@@ -167,6 +180,9 @@ fn build_command_from_array(array: RESPArray, store: Store) -> anyhow::Result<Co
                 _ => bail!("Expected RESPValue::BulkString found: {:?}", key),
             }
         }
+        "INFO" => Ok(Command::Info(InfoCommand {
+            kind: "replication".to_string(),
+        })),
         _ => bail!("Not implemented command: {:?}", command.data),
     }
 }
@@ -313,6 +329,18 @@ mod tests {
         let command = b"*2\r\n$3\r\nget\r\n$3\r\nkey\r\n";
         let command = parse_command(command, store)?;
         assert_eq!(command.response_bytes()?, b"$-1\r\n");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_info_command() -> anyhow::Result<()> {
+        let command = b"*1\r\n$4\r\ninfo\r\n";
+        let command = parse_command(command, Store::new())?;
+        match command {
+            Command::Info(_) => {}
+            _ => panic!("Expected info"),
+        }
+        assert_eq!(command.response_bytes()?, RESPBulkString{data: "role:master".to_string()}.serialize());
         Ok(())
     }
 }
