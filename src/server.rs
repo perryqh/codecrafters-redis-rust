@@ -21,8 +21,8 @@ async fn process_socket(mut socket: TcpStream, store: Store) -> anyhow::Result<(
 pub async fn run(config: Config) -> anyhow::Result<()> {
     let store = Store::new();
 
-    println!("Listening on {}", config.bind_address);
-    let listener = TcpListener::bind(&config.bind_address).await?;
+    println!("Listening on {}", config.bind_address());
+    let listener = TcpListener::bind(&config.bind_address()).await?;
     loop {
         let store = store.clone();
         let (socket, _) = listener.accept().await?;
