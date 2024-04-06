@@ -15,11 +15,17 @@ pub struct Store {
     data: Db,
 }
 
+pub const DEFAULT_EXPIRY: u64 = 1000 * 60 * 60 * 24 * 7; // 1 week
+
 impl Store {
     pub fn new() -> Self {
         Self {
             data: Default::default(),
         }
+    }
+
+    pub fn set_with_default_expiry(&self, key: String, value: Bytes) {
+        self.set(key, value, Duration::from_secs(DEFAULT_EXPIRY));
     }
 
     pub fn set(&self, key: String, value: Bytes, expiry_duration: Duration) {

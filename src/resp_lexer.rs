@@ -19,13 +19,17 @@ pub struct RESPBulkString {
 
 impl RESPSimpleString {
     pub fn new(data: &str) -> Self {
-        Self { data: data.to_string() }
+        Self {
+            data: data.to_string(),
+        }
     }
 }
 
 impl RESPBulkString {
     pub fn new(data: &str) -> Self {
-        Self { data: data.to_string() }
+        Self {
+            data: data.to_string(),
+        }
     }
 }
 

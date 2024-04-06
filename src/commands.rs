@@ -1,7 +1,8 @@
 // https://redis.io/docs/reference/protocol-spec/
 use crate::{
+    info::Info,
     resp_lexer::{Lexer, RESPArray, RESPBulkString, RESPSimpleString, RESPValue, Serialize},
-    store::Store,
+    store::{Store, DEFAULT_EXPIRY},
 };
 use anyhow::{bail, ensure};
 use std::time::Duration;
@@ -28,11 +29,14 @@ impl Command {
 
 pub struct InfoCommand {
     pub kind: String,
+    pub store: Store,
 }
 
 impl InfoCommand {
     fn response_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        let bulk_string = RESPBulkString::new("role:master");
+        let info = Info::from_store(&self.store)?;
+        let role = format!("role:{}", &info.replication.role);
+        let bulk_string = RESPBulkString::new(&role);
         Ok(bulk_string.serialize())
     }
 }
@@ -44,11 +48,9 @@ pub struct SetCommand {
     pub expiry_in_milliseconds: Option<u64>,
 }
 
-const DEFAULT_EXPIRY: i64 = 1000 * 60 * 60 * 24 * 7; // 1 week
-
 impl SetCommand {
     fn response_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        let expiry = self.expiry_in_milliseconds.unwrap_or(DEFAULT_EXPIRY as u64);
+        let expiry = self.expiry_in_milliseconds.unwrap_or(DEFAULT_EXPIRY);
         self.store.set(
             self.key.clone(),
             self.value.clone().into(),
@@ -147,7 +149,7 @@ fn build_command_from_array(array: RESPArray, store: Store) -> anyhow::Result<Co
                     _ => bail!("Expected RESPValue::Integer found: {:?}", expiry),
                 }
             } else {
-                Some(DEFAULT_EXPIRY as u64)
+                Some(DEFAULT_EXPIRY)
             };
 
             match (key, value) {
@@ -182,6 +184,7 @@ fn build_command_from_array(array: RESPArray, store: Store) -> anyhow::Result<Co
         }
         "INFO" => Ok(Command::Info(InfoCommand {
             kind: "replication".to_string(),
+            store,
         })),
         _ => bail!("Not implemented command: {:?}", command.data),
     }
@@ -340,7 +343,13 @@ mod tests {
             Command::Info(_) => {}
             _ => panic!("Expected info"),
         }
-        assert_eq!(command.response_bytes()?, RESPBulkString{data: "role:master".to_string()}.serialize());
+        assert_eq!(
+            command.response_bytes()?,
+            RESPBulkString {
+                data: "role:master".to_string()
+            }
+            .serialize()
+        );
         Ok(())
     }
 }

@@ -2,7 +2,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
 use crate::commands::parse_command;
-use crate::config::Config;
+use crate::info::Info;
 use crate::store::Store;
 
 async fn process_socket(mut socket: TcpStream, store: Store) -> anyhow::Result<()> {
@@ -18,11 +18,11 @@ async fn process_socket(mut socket: TcpStream, store: Store) -> anyhow::Result<(
     Ok(())
 }
 
-pub async fn run(config: Config) -> anyhow::Result<()> {
-    let store = Store::new();
+pub async fn run(store: &Store) -> anyhow::Result<()> {
+    let info = Info::from_store(store)?;
 
-    println!("Listening on {}", config.bind_address());
-    let listener = TcpListener::bind(&config.bind_address()).await?;
+    println!("Listening on {}", &info.bind_address());
+    let listener = TcpListener::bind(&info.bind_address()).await?;
     loop {
         let store = store.clone();
         let (socket, _) = listener.accept().await?;
