@@ -14,6 +14,8 @@ pub struct Replication {
     pub role: String,
     pub replication_of_host: Option<String>,
     pub replication_of_port: Option<u16>,
+    pub master_replid: Option<String>,
+    pub master_repl_offset: Option<u64>,
 }
 
 impl Default for Info {
@@ -32,6 +34,8 @@ impl Default for Replication {
             role: DEFAULT_ROLE.to_string(),
             replication_of_host: None,
             replication_of_port: None,
+            master_replid: None,
+            master_repl_offset: None,
         }
     }
 }
@@ -104,10 +108,22 @@ impl Info {
         } else {
             None
         };
+        let master_replid = if replication_role == "slave" {
+            None
+        } else {
+            Some("8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb".to_string())
+        };
+        let master_repl_offset = if replication_role == "slave" {
+            None
+        } else {
+            Some(0)
+        };
         let replication = Replication {
             role: replication_role,
             replication_of_host,
             replication_of_port,
+            master_replid,
+            master_repl_offset,
         };
 
         Ok(Self {
@@ -192,6 +208,13 @@ impl InfoBuilder {
     }
 
     pub fn build(self) -> Info {
+        let (master_replid, master_repl_offset) = match &self.replication_role {
+            Some(role) if role == "slave" => (None, None),
+            _ => (
+                Some("8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb".to_string()),
+                Some(0),
+            ),
+        };
         Info {
             self_host: self.self_host.unwrap_or_else(|| DEFAULT_HOST.to_string()),
             self_port: self.self_port.unwrap_or(DEFAULT_PORT),
@@ -201,6 +224,8 @@ impl InfoBuilder {
                     .unwrap_or_else(|| DEFAULT_ROLE.to_string()),
                 replication_of_host: self.replication_of_host,
                 replication_of_port: self.replication_of_port,
+                master_replid,
+                master_repl_offset,
             },
         }
     }
@@ -241,6 +266,7 @@ mod tests {
                 role: "slave".to_string(),
                 replication_of_host: Some("master.host".to_string()),
                 replication_of_port: Some(5678),
+                ..Default::default()
             },
         };
         let store = Store::new();

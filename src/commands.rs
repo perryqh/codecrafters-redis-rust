@@ -36,8 +36,21 @@ pub struct InfoCommand {
 impl InfoCommand {
     fn response_bytes(&self) -> anyhow::Result<Bytes> {
         let info = Info::from_store(&self.store)?;
-        let role = format!("role:{}", &info.replication.role);
-        let bulk_string = RESPBulkString::new(role.into());
+        let bulk_str = match info.replication.role.as_str() {
+            "master" => {
+                format!(
+                    "role:master\r\nmaster_replid:{}\r\nmaster_repl_offset:{}\r\n",
+                    info.replication
+                        .master_replid
+                        .as_ref()
+                        .unwrap_or(&"".to_string()),
+                    info.replication.master_repl_offset.as_ref().unwrap_or(&0)
+                )
+            }
+            "slave" => "role:slave".to_string(),
+            _ => bail!("Invalid role"),
+        };
+        let bulk_string = RESPBulkString::new(bulk_str.into());
         Ok(bulk_string.serialize())
     }
 }
@@ -53,8 +66,8 @@ impl SetCommand {
     fn response_bytes(&self) -> anyhow::Result<Bytes> {
         let expiry = self.expiry_in_milliseconds.unwrap_or(DEFAULT_EXPIRY);
         self.store.set(
-            self.key.clone().into(),
-            self.value.clone().into(),
+            self.key.clone(),
+            self.value.clone(),
             Duration::from_millis(expiry),
         );
         Ok(RESPSimpleString::new("OK".into()).serialize())
@@ -88,7 +101,7 @@ impl PingCommand {
 
 impl EchoCommand {
     fn response_bytes(&self) -> anyhow::Result<Bytes> {
-        Ok(RESPSimpleString::new(self.message.clone().into()).serialize())
+        Ok(RESPSimpleString::new(self.message.clone()).serialize())
     }
 }
 
@@ -149,8 +162,11 @@ fn build_command_from_array(array: RESPArray, store: Store) -> anyhow::Result<Co
                     RESPValue::Integer(expiry) => Some(*expiry as u64),
                     RESPValue::BulkString(expiry) => {
                         Some(String::from_utf8(expiry.data.to_vec())?.parse::<u64>()?)
-                    },
-                    _ => bail!("Expected RESPValue::Integer or RESPValue::BulkString found: {:?}", expiry),
+                    }
+                    _ => bail!(
+                        "Expected RESPValue::Integer or RESPValue::BulkString found: {:?}",
+                        expiry
+                    ),
                 }
             } else {
                 Some(DEFAULT_EXPIRY)
@@ -253,10 +269,7 @@ mod tests {
             _ => panic!("Expected set"),
         }
         assert_eq!(command.response_bytes()?.as_ref(), b"+OK\r\n");
-        assert_eq!(
-            store.get("key".into()).unwrap(),
-            Bytes::from("value")
-        );
+        assert_eq!(store.get("key".into()).unwrap(), Bytes::from("value"));
         Ok(())
     }
 
@@ -276,7 +289,10 @@ mod tests {
             }
             _ => panic!("Expected get"),
         }
-        assert_eq!(command.response_bytes()?.as_ref(), b"$5\r\nvalue\r\n".as_ref());
+        assert_eq!(
+            command.response_bytes()?.as_ref(),
+            b"$5\r\nvalue\r\n".as_ref()
+        );
         Ok(())
     }
 
@@ -310,10 +326,7 @@ mod tests {
             _ => panic!("Expected set"),
         }
         assert_eq!(command.response_bytes()?.as_ref(), b"+OK\r\n".as_ref());
-        assert_eq!(
-            store.get("key".into()).unwrap(),
-            Bytes::from("value")
-        );
+        assert_eq!(store.get("key".into()).unwrap(), Bytes::from("value"));
         Ok(())
     }
 
@@ -351,7 +364,7 @@ mod tests {
         assert_eq!(
             command.response_bytes()?,
             RESPBulkString {
-                data: "role:master".into(),
+                data: "role:master\r\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\r\nmaster_repl_offset:0\r\n".into(),
             }
             .serialize()
         );
