@@ -1,5 +1,5 @@
 use anyhow::ensure;
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 
 #[derive(Debug, PartialEq)]
 pub enum RESPValue {
@@ -9,46 +9,50 @@ pub enum RESPValue {
 }
 
 pub trait Serialize {
-    fn serialize(&self) -> Vec<u8>;
+    fn serialize(&self) -> Bytes;
 }
 
 #[derive(Debug, PartialEq)]
 pub struct RESPBulkString {
-    pub data: String,
+    pub data: Bytes,
 }
 
 impl RESPSimpleString {
-    pub fn new(data: &str) -> Self {
-        Self {
-            data: data.to_string(),
-        }
+    pub fn new(data: Bytes) -> Self {
+        Self { data }
     }
 }
 
 impl RESPBulkString {
-    pub fn new(data: &str) -> Self {
-        Self {
-            data: data.to_string(),
-        }
+    pub fn new(data: Bytes) -> Self {
+        Self { data }
     }
 }
 
 #[derive(Debug, PartialEq)]
 pub struct RESPSimpleString {
-    pub data: String,
+    pub data: Bytes,
 }
 
 impl Serialize for RESPSimpleString {
-    fn serialize(&self) -> Vec<u8> {
-        let serialized = format!("+{}\r\n", self.data);
-        serialized.into_bytes()
+    fn serialize(&self) -> Bytes {
+        let mut buffer = BytesMut::new();
+        buffer.extend_from_slice(b"+");
+        buffer.extend_from_slice(&self.data);
+        buffer.extend_from_slice(b"\r\n");
+        buffer.freeze()
     }
 }
 
 impl Serialize for RESPBulkString {
-    fn serialize(&self) -> Vec<u8> {
-        let serialized = format!("${}\r\n{}\r\n", self.data.len(), self.data);
-        serialized.into_bytes()
+    fn serialize(&self) -> Bytes {
+        let mut buffer = BytesMut::new();
+        buffer.extend_from_slice(b"$");
+        buffer.extend_from_slice(self.data.len().to_string().as_bytes());
+        buffer.extend_from_slice(b"\r\n");
+        buffer.extend_from_slice(&self.data);
+        buffer.extend_from_slice(b"\r\n");
+        buffer.freeze()
     }
 }
 
@@ -111,7 +115,7 @@ impl Lexer {
         );
 
         let (bulk_string, end_position) = match self.read_until_crlf(current_position) {
-            Some((line, end_position)) => (String::from_utf8(line.to_vec())?, end_position),
+            Some((line, end_position)) => (Bytes::copy_from_slice(line), end_position),
             None => {
                 return Err(anyhow::anyhow!(
                     "Invalid bulk string format {:?}",
@@ -184,7 +188,7 @@ mod tests {
             result,
             RESPValue::Array(RESPArray {
                 data: vec![RESPValue::BulkString(RESPBulkString {
-                    data: "ping".to_string()
+                    data: "ping".into(),
                 })]
             })
         );
@@ -202,10 +206,10 @@ mod tests {
             RESPValue::Array(RESPArray {
                 data: vec![
                     RESPValue::BulkString(RESPBulkString {
-                        data: "echo".to_string()
+                        data: "echo".into(),
                     }),
                     RESPValue::BulkString(RESPBulkString {
-                        data: "hello".to_string()
+                        data: "hello".into()
                     })
                 ]
             })
@@ -217,8 +221,8 @@ mod tests {
     #[test]
     fn test_serialize_bulk_string() -> anyhow::Result<()> {
         let input = "role:master".to_string();
-        let bulk_string = RESPBulkString { data: input };
-        let expected = b"$11\r\nrole:master\r\n";
+        let bulk_string = RESPBulkString { data: input.into() };
+        let expected: Bytes = "$11\r\nrole:master\r\n".into();
         assert_eq!(bulk_string.serialize(), expected);
 
         Ok(())

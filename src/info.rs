@@ -59,21 +59,23 @@ impl Info {
     }
 
     pub fn from_store(store: &Store) -> anyhow::Result<Self> {
-        let self_host = if let Some(self_host) = store.get(&format!("{}SELF_HOST", STORE_PREFIX)) {
-            String::from_utf8(self_host.to_vec()).context("invalid self_host bytes")?
-        } else {
-            DEFAULT_HOST.to_string()
-        };
-        let self_port = if let Some(self_port) = store.get(&format!("{}SELF_PORT", STORE_PREFIX)) {
-            String::from_utf8(self_port.to_vec())
-                .context("invalid self_port bytes")?
-                .parse::<u16>()
-                .context("invalid self_port u16")?
-        } else {
-            DEFAULT_PORT
-        };
+        let self_host =
+            if let Some(self_host) = store.get(format!("{}SELF_HOST", STORE_PREFIX).into()) {
+                String::from_utf8(self_host.to_vec()).context("invalid self_host bytes")?
+            } else {
+                DEFAULT_HOST.to_string()
+            };
+        let self_port =
+            if let Some(self_port) = store.get(format!("{}SELF_PORT", STORE_PREFIX).into()) {
+                String::from_utf8(self_port.to_vec())
+                    .context("invalid self_port bytes")?
+                    .parse::<u16>()
+                    .context("invalid self_port u16")?
+            } else {
+                DEFAULT_PORT
+            };
         let replication_role = if let Some(replication_role) =
-            store.get(&format!("{}REPLICATION:ROLE", STORE_PREFIX))
+            store.get(format!("{}REPLICATION:ROLE", STORE_PREFIX).into())
         {
             String::from_utf8(replication_role.to_vec())
                 .context("invalid replication_role bytes")?
@@ -81,7 +83,7 @@ impl Info {
             DEFAULT_ROLE.to_string()
         };
         let replication_of_host = if let Some(replication_of_host) =
-            store.get(&format!("{}REPLICATION:REPLICATION_OF_HOST", STORE_PREFIX))
+            store.get(format!("{}REPLICATION:REPLICATION_OF_HOST", STORE_PREFIX).into())
         {
             Some(
                 String::from_utf8(replication_of_host.to_vec())
@@ -91,7 +93,7 @@ impl Info {
             None
         };
         let replication_of_port = if let Some(replication_of_port) =
-            store.get(&format!("{}REPLICATION:REPLICATION_OF_PORT", STORE_PREFIX))
+            store.get(format!("{}REPLICATION:REPLICATION_OF_PORT", STORE_PREFIX).into())
         {
             Some(
                 String::from_utf8(replication_of_port.to_vec())
@@ -117,26 +119,26 @@ impl Info {
 
     pub fn write(&self, store: &Store) -> anyhow::Result<()> {
         store.set_with_default_expiry(
-            format!("{}SELF_HOST", STORE_PREFIX),
+            format!("{}SELF_HOST", STORE_PREFIX).into(),
             self.self_host.clone().into(),
         );
         store.set_with_default_expiry(
-            format!("{}SELF_PORT", STORE_PREFIX),
+            format!("{}SELF_PORT", STORE_PREFIX).into(),
             self.self_port.to_string().into(),
         );
         store.set_with_default_expiry(
-            format!("{}REPLICATION:ROLE", STORE_PREFIX),
+            format!("{}REPLICATION:ROLE", STORE_PREFIX).into(),
             self.replication.role.clone().into(),
         );
         if let Some(replication_of_host) = &self.replication.replication_of_host {
             store.set_with_default_expiry(
-                format!("{}REPLICATION:REPLICATION_OF_HOST", STORE_PREFIX),
+                format!("{}REPLICATION:REPLICATION_OF_HOST", STORE_PREFIX).into(),
                 replication_of_host.clone().into(),
             );
         }
         if let Some(replication_of_port) = &self.replication.replication_of_port {
             store.set_with_default_expiry(
-                format!("{}REPLICATION:REPLICATION_OF_PORT", STORE_PREFIX),
+                format!("{}REPLICATION:REPLICATION_OF_PORT", STORE_PREFIX).into(),
                 replication_of_port.to_string().into(),
             );
         }

@@ -8,7 +8,7 @@ struct ValueWithExpiry {
     expiry: Instant,
 }
 
-type Db = Arc<Mutex<HashMap<String, ValueWithExpiry>>>;
+type Db = Arc<Mutex<HashMap<Bytes, ValueWithExpiry>>>;
 
 #[derive(Clone, Default)]
 pub struct Store {
@@ -24,30 +24,30 @@ impl Store {
         }
     }
 
-    pub fn set_with_default_expiry(&self, key: String, value: Bytes) {
+    pub fn set_with_default_expiry(&self, key: Bytes, value: Bytes) {
         self.set(key, value, Duration::from_secs(DEFAULT_EXPIRY));
     }
 
-    pub fn set(&self, key: String, value: Bytes, expiry_duration: Duration) {
+    pub fn set(&self, key: Bytes, value: Bytes, expiry_duration: Duration) {
         let mut data = self.data.lock().unwrap();
         let expiry = Instant::now() + expiry_duration;
         data.insert(key, ValueWithExpiry { value, expiry });
     }
 
-    pub fn get(&self, key: &str) -> Option<Bytes> {
+    pub fn get(&self, key: Bytes) -> Option<Bytes> {
         let mut data = self.data.lock().unwrap();
-        if let Some(value_with_expiry) = data.get(key) {
+        if let Some(value_with_expiry) = data.get(&key) {
             if Instant::now() < value_with_expiry.expiry {
                 return Some(value_with_expiry.value.clone());
             } else {
-                data.remove(key);
+                data.remove(&key);
             }
         }
         None
     }
 
-    pub fn del(&self, key: &str) {
+    pub fn del(&self, key: Bytes) {
         let mut data = self.data.lock().unwrap();
-        data.remove(key);
+        data.remove(&key);
     }
 }

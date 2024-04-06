@@ -4,7 +4,8 @@ use crate::{
     resp_lexer::{Lexer, RESPArray, RESPBulkString, RESPSimpleString, RESPValue, Serialize},
     store::{Store, DEFAULT_EXPIRY},
 };
-use anyhow::{bail, ensure};
+use anyhow::{bail, ensure, Context};
+use bytes::Bytes;
 use std::time::Duration;
 
 pub enum Command {
@@ -16,7 +17,7 @@ pub enum Command {
 }
 
 impl Command {
-    pub fn response_bytes(&self) -> anyhow::Result<Vec<u8>> {
+    pub fn response_bytes(&self) -> anyhow::Result<Bytes> {
         match self {
             Command::Echo(command) => command.response_bytes(),
             Command::Ping(command) => command.response_bytes(),
@@ -28,69 +29,66 @@ impl Command {
 }
 
 pub struct InfoCommand {
-    pub kind: String,
+    pub kind: Bytes,
     pub store: Store,
 }
 
 impl InfoCommand {
-    fn response_bytes(&self) -> anyhow::Result<Vec<u8>> {
+    fn response_bytes(&self) -> anyhow::Result<Bytes> {
         let info = Info::from_store(&self.store)?;
         let role = format!("role:{}", &info.replication.role);
-        let bulk_string = RESPBulkString::new(&role);
+        let bulk_string = RESPBulkString::new(role.into());
         Ok(bulk_string.serialize())
     }
 }
 
 pub struct SetCommand {
-    pub key: String,
-    pub value: String,
+    pub key: Bytes,
+    pub value: Bytes,
     pub store: Store,
     pub expiry_in_milliseconds: Option<u64>,
 }
 
 impl SetCommand {
-    fn response_bytes(&self) -> anyhow::Result<Vec<u8>> {
+    fn response_bytes(&self) -> anyhow::Result<Bytes> {
         let expiry = self.expiry_in_milliseconds.unwrap_or(DEFAULT_EXPIRY);
         self.store.set(
-            self.key.clone(),
+            self.key.clone().into(),
             self.value.clone().into(),
             Duration::from_millis(expiry),
         );
-        Ok(RESPSimpleString::new("OK").serialize())
+        Ok(RESPSimpleString::new("OK".into()).serialize())
     }
 }
 
 pub struct GetCommand {
-    pub key: String,
+    pub key: Bytes,
     pub store: Store,
 }
 
 impl GetCommand {
-    fn response_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        match self.store.get(&self.key) {
-            Some(value) => {
-                let value = String::from_utf8(value.to_vec()).unwrap_or_default();
-                Ok(RESPBulkString::new(&value).serialize())
-            }
-            None => Ok(b"$-1\r\n".to_vec()),
+    fn response_bytes(&self) -> anyhow::Result<Bytes> {
+        match self.store.get(self.key.clone()) {
+            Some(value) => Ok(RESPBulkString::new(value).serialize()),
+            None => Ok("$-1\r\n".into()),
         }
     }
 }
 
 pub struct EchoCommand {
-    pub message: String,
+    pub message: Bytes,
 }
 
 pub struct PingCommand;
 impl PingCommand {
-    fn response_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        Ok(RESPSimpleString::new("PONG").serialize())
+    fn response_bytes(&self) -> anyhow::Result<Bytes> {
+        Ok(RESPSimpleString::new("PONG".into()).serialize())
     }
 }
 
 impl EchoCommand {
-    fn response_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        Ok(RESPSimpleString::new(&self.message).serialize())
+    fn response_bytes(&self) -> anyhow::Result<Bytes> {
+        Ok(RESPSimpleString::new(self.message.clone().into()).serialize())
     }
 }
 
@@ -113,7 +111,11 @@ fn build_command_from_array(array: RESPArray, store: Store) -> anyhow::Result<Co
         _ => bail!("Expected RESPValue::BulkString found: {:?}", command),
     };
 
-    match command.data.to_uppercase().as_str() {
+    match String::from_utf8(command.data.to_vec())
+        .context("Expected command data to be utf8")?
+        .to_uppercase()
+        .as_str()
+    {
         "PING" => Ok(Command::Ping(PingCommand)),
         "ECHO" => {
             ensure!(array.data.len() == 2, "echo 1 argument expected");
@@ -145,8 +147,10 @@ fn build_command_from_array(array: RESPArray, store: Store) -> anyhow::Result<Co
                     .ok_or_else(|| anyhow::anyhow!("Expected expiry"))?;
                 match expiry {
                     RESPValue::Integer(expiry) => Some(*expiry as u64),
-                    RESPValue::BulkString(expiry) => Some(expiry.data.parse::<u64>()?),
-                    _ => bail!("Expected RESPValue::Integer found: {:?}", expiry),
+                    RESPValue::BulkString(expiry) => {
+                        Some(String::from_utf8(expiry.data.to_vec())?.parse::<u64>()?)
+                    },
+                    _ => bail!("Expected RESPValue::Integer or RESPValue::BulkString found: {:?}", expiry),
                 }
             } else {
                 Some(DEFAULT_EXPIRY)
@@ -183,7 +187,7 @@ fn build_command_from_array(array: RESPArray, store: Store) -> anyhow::Result<Co
             }
         }
         "INFO" => Ok(Command::Info(InfoCommand {
-            kind: "replication".to_string(),
+            kind: "replication".into(),
             store,
         })),
         _ => bail!("Not implemented command: {:?}", command.data),
@@ -195,6 +199,7 @@ mod tests {
     use tokio::time::sleep;
 
     use super::*;
+    use bytes::Bytes;
 
     #[tokio::test]
     async fn test_parse_command_ping() -> anyhow::Result<()> {
@@ -204,7 +209,7 @@ mod tests {
             Command::Ping(_) => {}
             _ => panic!("Expected ping"),
         }
-        assert_eq!(command.response_bytes()?, b"+PONG\r\n");
+        assert_eq!(command.response_bytes()?.as_ref(), b"+PONG\r\n");
         Ok(())
     }
 
@@ -216,7 +221,7 @@ mod tests {
             Command::Ping(_) => {}
             _ => panic!("Expected ping"),
         }
-        assert_eq!(command.response_bytes()?, b"+PONG\r\n");
+        assert_eq!(command.response_bytes()?.as_ref(), b"+PONG\r\n");
         Ok(())
     }
 
@@ -230,7 +235,7 @@ mod tests {
             }
             _ => panic!("Expected echo"),
         }
-        assert_eq!(command.response_bytes()?, b"+videogame\r\n");
+        assert_eq!(command.response_bytes()?.as_ref(), b"+videogame\r\n");
         Ok(())
     }
 
@@ -247,10 +252,10 @@ mod tests {
             }
             _ => panic!("Expected set"),
         }
-        assert_eq!(command.response_bytes()?, b"+OK\r\n");
+        assert_eq!(command.response_bytes()?.as_ref(), b"+OK\r\n");
         assert_eq!(
-            String::from_utf8(store.get("key").unwrap().to_vec()).unwrap(),
-            "value"
+            store.get("key".into()).unwrap(),
+            Bytes::from("value")
         );
         Ok(())
     }
@@ -260,7 +265,7 @@ mod tests {
         let command = b"*2\r\n$3\r\nget\r\n$3\r\nkey\r\n";
         let store = Store::new();
         store.set(
-            "key".to_string(),
+            "key".into(),
             "value".into(),
             Duration::from_millis(DEFAULT_EXPIRY as u64),
         );
@@ -271,7 +276,7 @@ mod tests {
             }
             _ => panic!("Expected get"),
         }
-        assert_eq!(command.response_bytes()?, b"$5\r\nvalue\r\n");
+        assert_eq!(command.response_bytes()?.as_ref(), b"$5\r\nvalue\r\n".as_ref());
         Ok(())
     }
 
@@ -286,7 +291,7 @@ mod tests {
             }
             _ => panic!("Expected get"),
         }
-        assert_eq!(command.response_bytes()?, b"$-1\r\n");
+        assert_eq!(command.response_bytes()?.as_ref(), b"$-1\r\n".as_ref());
         Ok(())
     }
 
@@ -304,10 +309,10 @@ mod tests {
             }
             _ => panic!("Expected set"),
         }
-        assert_eq!(command.response_bytes()?, b"+OK\r\n");
+        assert_eq!(command.response_bytes()?.as_ref(), b"+OK\r\n".as_ref());
         assert_eq!(
-            String::from_utf8(store.get("key").unwrap().to_vec()).unwrap(),
-            "value"
+            store.get("key".into()).unwrap(),
+            Bytes::from("value")
         );
         Ok(())
     }
@@ -325,13 +330,13 @@ mod tests {
             }
             _ => panic!("Expected set"),
         }
-        assert_eq!(command.response_bytes()?, b"+OK\r\n");
-        assert_eq!(store.get("key"), Some("value".into()));
+        assert_eq!(command.response_bytes()?, "+OK\r\n");
+        assert_eq!(store.get("key".into()), Some(Bytes::from("value")));
 
         sleep(Duration::from_secs(1)).await;
         let command = b"*2\r\n$3\r\nget\r\n$3\r\nkey\r\n";
         let command = parse_command(command, store)?;
-        assert_eq!(command.response_bytes()?, b"$-1\r\n");
+        assert_eq!(command.response_bytes()?, Bytes::from("$-1\r\n"));
         Ok(())
     }
 
@@ -346,7 +351,7 @@ mod tests {
         assert_eq!(
             command.response_bytes()?,
             RESPBulkString {
-                data: "role:master".to_string()
+                data: "role:master".into(),
             }
             .serialize()
         );
