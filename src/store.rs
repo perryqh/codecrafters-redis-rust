@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+#[derive(Debug)]
 struct ValueWithExpiry {
     value: Bytes,
     expiry: Instant,
@@ -10,7 +11,7 @@ struct ValueWithExpiry {
 
 type Db = Arc<Mutex<HashMap<Bytes, ValueWithExpiry>>>;
 
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Store {
     data: Db,
 }

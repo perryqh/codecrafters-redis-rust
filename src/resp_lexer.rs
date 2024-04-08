@@ -34,6 +34,39 @@ pub struct RESPSimpleString {
     pub data: Bytes,
 }
 
+impl Serialize for RESPValue {
+    fn serialize(&self) -> Bytes {
+        match self {
+            RESPValue::BulkString(bulk_string) => bulk_string.serialize(),
+            RESPValue::Array(array) => array.serialize(),
+            RESPValue::Integer(int_value) => int_value.serialize(),
+        }
+    }
+}
+
+impl Serialize for i64 {
+    fn serialize(&self) -> Bytes {
+        let mut buffer = BytesMut::new();
+        buffer.extend_from_slice(b":");
+        buffer.extend_from_slice(self.to_string().as_bytes());
+        buffer.extend_from_slice(b"\r\n");
+        buffer.freeze()
+    }
+}
+
+impl Serialize for RESPArray {
+    fn serialize(&self) -> Bytes {
+        let mut buffer = BytesMut::new();
+        buffer.extend_from_slice(b"*");
+        buffer.extend_from_slice(self.data.len().to_string().as_bytes());
+        buffer.extend_from_slice(b"\r\n");
+        for value in &self.data {
+            buffer.extend_from_slice(&value.serialize());
+        }
+        buffer.freeze()
+    }
+}
+
 impl Serialize for RESPSimpleString {
     fn serialize(&self) -> Bytes {
         let mut buffer = BytesMut::new();

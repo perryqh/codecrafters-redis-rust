@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{ensure, Context};
 
 use crate::store::Store;
 
@@ -18,6 +18,24 @@ pub struct Replication {
     pub master_repl_offset: Option<u64>,
 }
 
+impl Replication {
+    pub fn master_address(&self) -> anyhow::Result<String> {
+        ensure!(
+            self.role == "slave",
+            "master_address is only available for slave"
+        );
+        Ok(format!(
+            "{}:{}",
+            self.replication_of_host
+                .as_ref()
+                .context("expecting replication_of_host")?,
+            self.replication_of_port
+                .as_ref()
+                .context("expecting replication_of_port")?
+        ))
+    }
+}
+
 impl Default for Info {
     fn default() -> Self {
         Self {
@@ -25,6 +43,12 @@ impl Default for Info {
             self_port: DEFAULT_PORT,
             replication: Default::default(),
         }
+    }
+}
+
+impl Info {
+    pub fn is_slave(&self) -> bool {
+        self.replication.role == "slave"
     }
 }
 

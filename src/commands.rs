@@ -8,6 +8,7 @@ use anyhow::{bail, ensure, Context};
 use bytes::Bytes;
 use std::time::Duration;
 
+#[derive(Debug)]
 pub enum Command {
     Echo(EchoCommand),
     Ping(PingCommand),
@@ -28,6 +29,7 @@ impl Command {
     }
 }
 
+#[derive(Debug)]
 pub struct InfoCommand {
     pub kind: Bytes,
     pub store: Store,
@@ -55,6 +57,7 @@ impl InfoCommand {
     }
 }
 
+#[derive(Debug)]
 pub struct SetCommand {
     pub key: Bytes,
     pub value: Bytes,
@@ -73,7 +76,7 @@ impl SetCommand {
         Ok(RESPSimpleString::new("OK".into()).serialize())
     }
 }
-
+#[derive(Debug)]
 pub struct GetCommand {
     pub key: Bytes,
     pub store: Store,
@@ -87,11 +90,11 @@ impl GetCommand {
         }
     }
 }
-
+#[derive(Debug)]
 pub struct EchoCommand {
     pub message: Bytes,
 }
-
+#[derive(Debug)]
 pub struct PingCommand;
 impl PingCommand {
     fn response_bytes(&self) -> anyhow::Result<Bytes> {
