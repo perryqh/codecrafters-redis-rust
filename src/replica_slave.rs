@@ -1,5 +1,6 @@
+use anyhow::ensure;
 use bytes::Bytes;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{
     info::Info,
@@ -12,19 +13,34 @@ pub async fn slave_hand_shake(store: &Store) -> anyhow::Result<()> {
     let master_address = info.replication.master_address()?;
     let mut stream = tokio::net::TcpStream::connect(master_address).await?;
 
-    let (_reader, mut writer) = stream.split();
+    let (mut reader, mut writer) = stream.split();
 
     let ping_bytes = ping_bytes().await?;
     writer.write_all(&ping_bytes).await?;
     writer.flush().await?;
 
-    // let listening_port_bytes = listening_port_bytes(&info).await?;
-    // writer.write_all(&listening_port_bytes).await?;
-    // writer.flush().await?;
+    let mut buf = [0; 512];
+    let byte_count = reader.read(&mut buf).await?;
+    ensure!(byte_count > 0, "No data received from master");
+    println!("Received: {:?}", &buf[..byte_count]);
 
-    // let cap_bytes = capability_bytes().await?;
-    // writer.write_all(&cap_bytes).await?;
-    // writer.flush().await?;
+    let listening_port_bytes = listening_port_bytes(&info).await?;
+    writer.write_all(&listening_port_bytes).await?;
+    writer.flush().await?;
+
+    buf.fill(0);
+    let byte_count = reader.read(&mut buf).await?;
+    ensure!(byte_count > 0, "No data received from master");
+    println!("Received: {:?}", &buf[..byte_count]);
+
+    let cap_bytes = capability_bytes().await?;
+    writer.write_all(&cap_bytes).await?;
+    writer.flush().await?;
+
+    buf.fill(0);
+    let byte_count = reader.read(&mut buf).await?;
+    ensure!(byte_count > 0, "No data received from master");
+    println!("Received: {:?}", &buf[..byte_count]);
 
     Ok(())
 }
