@@ -42,6 +42,15 @@ pub async fn slave_hand_shake(store: &Store) -> anyhow::Result<()> {
     ensure!(byte_count > 0, "No data received from master");
     println!("Received: {:?}", &buf[..byte_count]);
 
+    let psync_bytes = psync_bytes().await?;
+    writer.write_all(&psync_bytes).await?;
+    writer.flush().await?;
+
+    buf.fill(0);
+    let byte_count = reader.read(&mut buf).await?;
+    ensure!(byte_count > 0, "No data received from master");
+    println!("Received: {:?}", &buf[..byte_count]);
+
     Ok(())
 }
 async fn ping_bytes() -> anyhow::Result<Bytes> {
@@ -79,6 +88,18 @@ async fn capability_bytes() -> anyhow::Result<Bytes> {
     Ok(bytes)
 }
 
+async fn psync_bytes() -> anyhow::Result<Bytes> {
+    let bytes = RESPArray {
+        data: vec![
+            RESPValue::BulkString(RESPBulkString::new(Bytes::from("PSYNC"))),
+            RESPValue::BulkString(RESPBulkString::new(Bytes::from("?"))),
+            RESPValue::BulkString(RESPBulkString::new(Bytes::from("-1"))),
+        ],
+    }
+    .serialize();
+    Ok(bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,6 +128,14 @@ mod tests {
     async fn test_capability_bytes() -> anyhow::Result<()> {
         let expected_bytes = Bytes::from("*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n");
         let bytes = capability_bytes().await?;
+        assert_eq!(bytes, expected_bytes);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_psync_bytes() -> anyhow::Result<()> {
+        let expected_bytes = Bytes::from("*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n");
+        let bytes = psync_bytes().await?;
         assert_eq!(bytes, expected_bytes);
         Ok(())
     }
