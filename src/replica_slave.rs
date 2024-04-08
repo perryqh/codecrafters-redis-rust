@@ -16,12 +16,15 @@ pub async fn slave_hand_shake(store: &Store) -> anyhow::Result<()> {
 
     let ping_bytes = ping_bytes().await?;
     writer.write_all(&ping_bytes).await?;
+    writer.flush().await?;
 
-    let listening_port_bytes = listening_port_bytes(&info).await?;
-    writer.write_all(&listening_port_bytes).await?;
+    // let listening_port_bytes = listening_port_bytes(&info).await?;
+    // writer.write_all(&listening_port_bytes).await?;
+    // writer.flush().await?;
 
-    let cap_bytes = capability_bytes().await?;
-    writer.write_all(&cap_bytes).await?;
+    // let cap_bytes = capability_bytes().await?;
+    // writer.write_all(&cap_bytes).await?;
+    // writer.flush().await?;
 
     Ok(())
 }
