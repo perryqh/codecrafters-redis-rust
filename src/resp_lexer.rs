@@ -4,6 +4,7 @@ use bytes::{Bytes, BytesMut};
 #[derive(Debug, PartialEq)]
 pub enum RESPValue {
     BulkString(RESPBulkString),
+    SimpleString(RESPSimpleString),
     Array(RESPArray),
     Integer(i64),
 }
@@ -37,6 +38,7 @@ pub struct RESPSimpleString {
 impl Serialize for RESPValue {
     fn serialize(&self) -> Bytes {
         match self {
+            RESPValue::SimpleString(simple_string) => simple_string.serialize(),
             RESPValue::BulkString(bulk_string) => bulk_string.serialize(),
             RESPValue::Array(array) => array.serialize(),
             RESPValue::Integer(int_value) => int_value.serialize(),
@@ -116,6 +118,7 @@ impl Lexer {
             b'*' => self.lex_array(current_position + 1),
             b'$' => self.lex_bulk_string(current_position + 1),
             b':' => self.lex_int_value(current_position + 1),
+            b'+' => self.lex_simple_string(current_position + 1),
             _ => Err(anyhow::anyhow!("Invalid RESP value: {:?}", self.data)),
         }
     }
@@ -128,6 +131,25 @@ impl Lexer {
 
         let int_value = self.lex_int(line)?;
         Ok((RESPValue::Integer(int_value), current_position))
+    }
+
+    fn lex_simple_string(&self, current_position: usize) -> anyhow::Result<(RESPValue, usize)> {
+        let (line, current_position) = match self.read_until_crlf(current_position) {
+            Some((line, current_position)) => (line, current_position),
+            None => {
+                return Err(anyhow::anyhow!(
+                    "Invalid simple string format {:?}",
+                    self.data
+                ))
+            }
+        };
+
+        Ok((
+            RESPValue::SimpleString(RESPSimpleString {
+                data: Bytes::copy_from_slice(line),
+            }),
+            current_position,
+        ))
     }
 
     fn lex_bulk_string(&self, current_position: usize) -> anyhow::Result<(RESPValue, usize)> {
@@ -257,6 +279,21 @@ mod tests {
         let bulk_string = RESPBulkString { data: input.into() };
         let expected: Bytes = "$11\r\nrole:master\r\n".into();
         assert_eq!(bulk_string.serialize(), expected);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_simple_string() -> anyhow::Result<()> {
+        let bytes: BytesMut = "+PONG\r\n".into();
+        let mut lexer = Lexer::new(bytes);
+        let result = lexer.lex()?;
+        assert_eq!(
+            result,
+            RESPValue::SimpleString(RESPSimpleString {
+                data: "PONG".into()
+            })
+        );
 
         Ok(())
     }
