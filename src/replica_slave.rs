@@ -3,12 +3,11 @@ use bytes::Bytes;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{
-    resp_lexer::{RESPArray, RESPBulkString, RESPValue, Serialize},
-    store::Store,
+    info::Info, resp_lexer::{RESPArray, RESPBulkString, RESPValue, Serialize}, store::Store
 };
 
 pub async fn slave_hand_shake(store: &Store) -> anyhow::Result<()> {
-    let info = crate::info::Info::from_store(store)?;
+    let info = Info::from_store(store)?;
     let master_address = info.replication.master_address()?;
     let mut stream = tokio::net::TcpStream::connect(master_address).await?;
 
@@ -45,6 +44,31 @@ async fn ping_bytes() -> anyhow::Result<Bytes> {
     Ok(bytes)
 }
 
+async fn listening_port_bytes(info: &Info) -> anyhow::Result<Bytes> {
+    let port = info.self_port;
+    let bytes = RESPArray {
+        data: vec![
+            RESPValue::BulkString(RESPBulkString::new(Bytes::from("REPLCONF"))),
+            RESPValue::BulkString(RESPBulkString::new(Bytes::from("listening-port"))),
+            RESPValue::BulkString(RESPBulkString::new(Bytes::from(port.to_string()))),
+        ],
+    }
+    .serialize();
+    Ok(bytes)
+}
+
+async fn capability_bytes() -> anyhow::Result<Bytes> {
+    let bytes = RESPArray {
+        data: vec![
+            RESPValue::BulkString(RESPBulkString::new(Bytes::from("REPLCONF"))),
+            RESPValue::BulkString(RESPBulkString::new(Bytes::from("capa"))),
+            RESPValue::BulkString(RESPBulkString::new(Bytes::from("psync2"))),
+        ],
+    }
+    .serialize();
+    Ok(bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -53,6 +77,26 @@ mod tests {
     async fn test_ping_bytes() -> anyhow::Result<()> {
         let bytes = ping_bytes().await?;
         assert_eq!(bytes, Bytes::from("*1\r\n$4\r\nPING\r\n"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_listening_port_bytes() -> anyhow::Result<()> {
+        let info = Info {
+            self_port: 6380,
+            ..Default::default()
+        };
+        let expected_bytes = Bytes::from("*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n6380\r\n");    
+        let bytes = listening_port_bytes(&info).await?;
+        assert_eq!(bytes, expected_bytes);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_capability_bytes() -> anyhow::Result<()> {
+        let expected_bytes = Bytes::from("*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n");    
+        let bytes = capability_bytes().await?;
+        assert_eq!(bytes, expected_bytes);
         Ok(())
     }
 
