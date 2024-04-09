@@ -15,6 +15,7 @@ pub enum Command {
     Set(SetCommand),
     Get(GetCommand),
     Info(InfoCommand),
+    ReplConf(ReplConfCommand),
 }
 
 impl Command {
@@ -25,7 +26,21 @@ impl Command {
             Command::Set(command) => command.response_bytes(),
             Command::Get(command) => command.response_bytes(),
             Command::Info(command) => command.response_bytes(),
+            Command::ReplConf(command) => command.response_bytes(),
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct ReplConfCommand {
+    pub listening_port: Option<u16>,
+    pub capabilities: Vec<String>,
+    pub store: Store,
+}
+
+impl ReplConfCommand {
+    fn response_bytes(&self) -> anyhow::Result<Bytes> {
+        Ok(RESPSimpleString::new("OK".into()).serialize())
     }
 }
 
@@ -209,6 +224,52 @@ fn build_command_from_array(array: RESPArray, store: Store) -> anyhow::Result<Co
             kind: "replication".into(),
             store,
         })),
+        "REPLCONF" => {
+            let mut listening_port = None;
+            let mut capabilities = vec![];
+            for i in (1..array.data.len()).step_by(2) {
+                let key = array
+                    .data
+                    .get(i)
+                    .ok_or_else(|| anyhow::anyhow!("Expected key"))?;
+                let value = array
+                    .data
+                    .get(i + 1)
+                    .ok_or_else(|| anyhow::anyhow!("Expected value"))?;
+                match (key, value) {
+                    (RESPValue::BulkString(key), RESPValue::BulkString(value)) => {
+                        match String::from_utf8(key.data.to_vec())
+                            .context("Expected key data to be utf8")?
+                            .to_lowercase()
+                            .as_str()
+                        {
+                            "listening-port" => {
+                                let port = String::from_utf8(value.data.to_vec())
+                                    .context("Expected value data to be utf8")?
+                                    .parse::<u16>()?;
+                                listening_port = Some(port);
+                            }
+                            "capa" => {
+                                let capa = String::from_utf8(value.data.to_vec())
+                                    .context("Expected value data to be utf8")?;
+                                capabilities.push(capa);
+                            }
+                            _ => bail!("Invalid key: {:?}", key),
+                        }
+                    }
+                    _ => bail!(
+                        "Expected RESPValue::BulkString found: {:?} {:?}",
+                        key,
+                        value
+                    ),
+                }
+            }
+            Ok(Command::ReplConf(ReplConfCommand {
+                listening_port,
+                capabilities,
+                store,
+            }))
+        }
         _ => bail!("Not implemented command: {:?}", command.data),
     }
 }
@@ -370,6 +431,60 @@ mod tests {
                 data: "role:master\r\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\r\nmaster_repl_offset:0\r\n".into(),
             }
             .serialize()
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_repl_conf_listening_port() -> anyhow::Result<()> {
+        let array = RESPArray {
+            data: vec![
+                RESPValue::BulkString(RESPBulkString::new(Bytes::from("REPLCONF"))),
+                RESPValue::BulkString(RESPBulkString::new(Bytes::from("listening-port"))),
+                RESPValue::BulkString(RESPBulkString::new(Bytes::from("6380"))),
+            ],
+        };
+        let command = array.serialize();
+        let command = parse_command(command.as_ref(), Store::new())?;
+        match &command {
+            Command::ReplConf(repl_conf) => {
+                assert_eq!(repl_conf.listening_port, Some(6380));
+            }
+            _ => panic!("Expected repl conf"),
+        }
+        assert_eq!(
+            command.response_bytes()?,
+            RESPSimpleString { data: "OK".into() }.serialize()
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_repl_conf_capabilities() -> anyhow::Result<()> {
+        let array = RESPArray {
+            data: vec![
+                RESPValue::BulkString(RESPBulkString::new(Bytes::from("REPLCONF"))),
+                RESPValue::BulkString(RESPBulkString::new(Bytes::from("capa"))),
+                RESPValue::BulkString(RESPBulkString::new(Bytes::from("eof"))),
+                RESPValue::BulkString(RESPBulkString::new(Bytes::from("capa"))),
+                RESPValue::BulkString(RESPBulkString::new(Bytes::from("psync2"))),
+            ],
+        };
+        let command = array.serialize();
+        let command = parse_command(command.as_ref(), Store::new())?;
+        match &command {
+            Command::ReplConf(repl_conf) => {
+                assert_eq!(repl_conf.listening_port, None);
+                assert_eq!(
+                    repl_conf.capabilities,
+                    vec!["eof".to_string(), "psync2".to_string()]
+                );
+            }
+            _ => panic!("Expected repl conf"),
+        }
+        assert_eq!(
+            command.response_bytes()?,
+            RESPSimpleString { data: "OK".into() }.serialize()
         );
         Ok(())
     }
