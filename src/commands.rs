@@ -18,8 +18,8 @@ pub enum Command {
     ReplConf(ReplConfCommand),
 }
 
-impl Command {
-    pub fn response_bytes(&self) -> anyhow::Result<Bytes> {
+impl CommandResponse for Command {
+    fn response_bytes(&self) -> anyhow::Result<Bytes> {
         match self {
             Command::Echo(command) => command.response_bytes(),
             Command::Ping(command) => command.response_bytes(),
@@ -31,6 +31,10 @@ impl Command {
     }
 }
 
+pub trait CommandResponse {
+    fn response_bytes(&self) -> anyhow::Result<Bytes>;
+}
+
 #[derive(Debug)]
 pub struct ReplConfCommand {
     pub listening_port: Option<u16>,
@@ -38,7 +42,7 @@ pub struct ReplConfCommand {
     pub store: Store,
 }
 
-impl ReplConfCommand {
+impl CommandResponse for ReplConfCommand {
     fn response_bytes(&self) -> anyhow::Result<Bytes> {
         Ok(RESPSimpleString::new("OK".into()).serialize())
     }
@@ -50,7 +54,7 @@ pub struct InfoCommand {
     pub store: Store,
 }
 
-impl InfoCommand {
+impl CommandResponse for InfoCommand {
     fn response_bytes(&self) -> anyhow::Result<Bytes> {
         let info = Info::from_store(&self.store)?;
         let bulk_str = match info.replication.role.as_str() {
@@ -80,7 +84,7 @@ pub struct SetCommand {
     pub expiry_in_milliseconds: Option<u64>,
 }
 
-impl SetCommand {
+impl CommandResponse for SetCommand {
     fn response_bytes(&self) -> anyhow::Result<Bytes> {
         let expiry = self.expiry_in_milliseconds.unwrap_or(DEFAULT_EXPIRY);
         self.store.set(
@@ -97,7 +101,7 @@ pub struct GetCommand {
     pub store: Store,
 }
 
-impl GetCommand {
+impl CommandResponse for GetCommand {
     fn response_bytes(&self) -> anyhow::Result<Bytes> {
         match self.store.get(self.key.clone()) {
             Some(value) => Ok(RESPBulkString::new(value).serialize()),
@@ -111,13 +115,13 @@ pub struct EchoCommand {
 }
 #[derive(Debug)]
 pub struct PingCommand;
-impl PingCommand {
+impl CommandResponse for PingCommand {
     fn response_bytes(&self) -> anyhow::Result<Bytes> {
         Ok(RESPSimpleString::new("PONG".into()).serialize())
     }
 }
 
-impl EchoCommand {
+impl CommandResponse for EchoCommand {
     fn response_bytes(&self) -> anyhow::Result<Bytes> {
         Ok(RESPSimpleString::new(self.message.clone()).serialize())
     }
