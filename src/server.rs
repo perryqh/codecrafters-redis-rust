@@ -1,7 +1,8 @@
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
-use crate::commands::{parse_command, CommandResponse};
+use crate::command_builder::parse_command;
+use crate::commands::CommandResponse;
 use crate::info::Info;
 use crate::store::Store;
 

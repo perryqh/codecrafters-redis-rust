@@ -1,3 +1,4 @@
+pub mod command_builder;
 pub mod commands;
 pub mod info;
 pub mod redis_args;
