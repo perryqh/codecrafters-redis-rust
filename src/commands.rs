@@ -16,6 +16,7 @@ pub enum Command {
     Get(GetCommand),
     Info(InfoCommand),
     ReplConf(ReplConfCommand),
+    Psync(PsyncCommand),
 }
 
 impl CommandResponse for Command {
@@ -27,12 +28,33 @@ impl CommandResponse for Command {
             Command::Get(command) => command.response_bytes(),
             Command::Info(command) => command.response_bytes(),
             Command::ReplConf(command) => command.response_bytes(),
+            Command::Psync(command) => command.response_bytes(),
         }
     }
 }
 
 pub trait CommandResponse {
     fn response_bytes(&self) -> anyhow::Result<Bytes>;
+}
+
+#[derive(Debug)]
+pub struct PsyncCommand {
+    pub store: Store,
+    pub master_replid: Option<String>,
+    pub master_repl_offset: Option<u64>,
+}
+
+impl CommandResponse for PsyncCommand {
+    fn response_bytes(&self) -> anyhow::Result<Bytes> {
+        let info = Info::from_store(&self.store)?;
+        let repl_offset = info.replication.master_repl_offset.as_ref().unwrap_or(&0);
+        let master_repli_id = match info.replication.master_replid.as_ref() {
+            Some(replid) => replid,
+            None => bail!("Expected master replid to be set!"),
+        };
+        let response = format!("FULLRESYNC {} {}", master_repli_id, repl_offset);
+        Ok(RESPSimpleString::new(response.into()).serialize())
+    }
 }
 
 #[derive(Debug)]
@@ -484,6 +506,21 @@ mod tests {
                     vec!["eof".to_string(), "psync2".to_string()]
                 );
             }
+            _ => panic!("Expected repl conf"),
+        }
+        assert_eq!(
+            command.response_bytes()?,
+            RESPSimpleString { data: "OK".into() }.serialize()
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_psync() -> anyhow::Result<()> {
+        let command = b"*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n";
+        let command = parse_command(command, Store::new())?;
+        match command {
+            Command::Psync(_) => {}
             _ => panic!("Expected repl conf"),
         }
         assert_eq!(

@@ -18,6 +18,8 @@ pub struct Replication {
     pub master_repl_offset: Option<u64>,
 }
 
+pub const DEFAULT_MASTER_REPLID: &str = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb";
+
 impl Replication {
     pub fn master_address(&self) -> anyhow::Result<String> {
         ensure!(
@@ -193,6 +195,8 @@ pub struct InfoBuilder {
     replication_role: Option<String>,
     replication_of_host: Option<String>,
     replication_of_port: Option<u16>,
+    master_replid: Option<String>,
+    master_repl_offset: Option<u64>,
 }
 
 impl InfoBuilder {
@@ -231,14 +235,21 @@ impl InfoBuilder {
         self
     }
 
+    pub fn master_replid(mut self, master_replid: Option<String>) -> Self {
+        if let Some(replid) = master_replid {
+            self.master_replid = Some(replid);
+        }
+        self
+    }
+
+    pub fn master_repl_offset(mut self, master_repl_offset: Option<u64>) -> Self {
+        if let Some(offset) = master_repl_offset {
+            self.master_repl_offset = Some(offset);
+        }
+        self
+    }
+
     pub fn build(self) -> Info {
-        let (master_replid, master_repl_offset) = match &self.replication_role {
-            Some(role) if role == "slave" => (None, None),
-            _ => (
-                Some("8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb".to_string()),
-                Some(0),
-            ),
-        };
         Info {
             self_host: self.self_host.unwrap_or_else(|| DEFAULT_HOST.to_string()),
             self_port: self.self_port.unwrap_or(DEFAULT_PORT),
@@ -248,8 +259,8 @@ impl InfoBuilder {
                     .unwrap_or_else(|| DEFAULT_ROLE.to_string()),
                 replication_of_host: self.replication_of_host,
                 replication_of_port: self.replication_of_port,
-                master_replid,
-                master_repl_offset,
+                master_replid: self.master_replid,
+                master_repl_offset: self.master_repl_offset,
             },
         }
     }

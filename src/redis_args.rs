@@ -1,6 +1,6 @@
 use anyhow::{bail, Context};
 
-use crate::info::Info;
+use crate::info::{Info, DEFAULT_MASTER_REPLID};
 
 #[derive(Debug, Default, PartialEq)]
 pub struct RedisArgs {
@@ -41,6 +41,11 @@ impl RedisArgs {
                 .replication_role(Some("slave".to_string()))
                 .replication_of_host(Some(replicaof.0.clone()))
                 .replication_of_port(Some(replicaof.1));
+        } else {
+            info = info
+                .replication_role(Some("master".to_string()))
+                .master_replid(Some(DEFAULT_MASTER_REPLID.to_string()))
+                .master_repl_offset(Some(0));
         }
         info.build()
     }
