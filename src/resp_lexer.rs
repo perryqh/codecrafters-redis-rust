@@ -169,22 +169,16 @@ impl Lexer {
             "Bulk string length must be greater than or equal to 0"
         );
 
-        let (bulk_string, end_position) = match self.read_until_crlf(current_position) {
-            Some((line, end_position)) => (Bytes::copy_from_slice(line), end_position),
-            None => {
-                return Err(anyhow::anyhow!(
-                    "Invalid bulk string format {:?}",
-                    self.data
-                ))
-            }
-        };
-
-        let read_length = end_position - current_position - 2;
+        let bulk_string =
+            &self.data[current_position..(current_position + bulk_string_length as usize)];
+        let bulk_string = Bytes::copy_from_slice(bulk_string);
+        let end_position = current_position + bulk_string_length as usize + 2;
         ensure!(
-            (read_length as i64) == bulk_string_length,
-            "Bulk string length does not match read length: {} != {}",
-            bulk_string_length,
-            read_length
+            self.data.len() >= end_position
+                && self.data[end_position - 2] == b'\r'
+                && self.data[end_position - 1] == b'\n',
+            "Invalid bulk string format {:?}. Expected bulk string to end with CRLF.",
+            self.data
         );
 
         Ok((
@@ -279,6 +273,44 @@ mod tests {
         let bulk_string = RESPBulkString { data: input.into() };
         let expected: Bytes = "$11\r\nrole:master\r\n".into();
         assert_eq!(bulk_string.serialize(), expected);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_lex_bulk_string_with_crlf() -> anyhow::Result<()> {
+        let input = "role:master\r\nmaster_replid:878S\r\nmaster_repl_offset:0";
+        let input_as_bytes = format!("${}\r\n{}\r\n", input.len(), input);
+        let mut lexer = Lexer::new(BytesMut::from(&input_as_bytes[..]));
+        let result = lexer.lex()?;
+        assert_eq!(
+            result,
+            RESPValue::BulkString(RESPBulkString {
+                data: "role:master\r\nmaster_replid:878S\r\nmaster_repl_offset:0".into()
+            })
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_lex_bulk_string_with_crlf_without_termination() -> anyhow::Result<()> {
+        let input = "role:master\r\nmaster_replid:878S\r\nmaster_repl_offset:0";
+        let input_as_bytes = format!("${}\r\n{}", input.len(), input);
+        let mut lexer = Lexer::new(BytesMut::from(&input_as_bytes[..]));
+        let result = lexer.lex();
+        assert!(result.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_lex_bulk_string_with_crlf_without_valid_termination() -> anyhow::Result<()> {
+        let input = "role:master\r\nmaster_replid:878S\r\nmaster_repl_offset:0\r\r";
+        let input_as_bytes = format!("${}\r\n{}", input.len(), input);
+        let mut lexer = Lexer::new(BytesMut::from(&input_as_bytes[..]));
+        let result = lexer.lex();
+        assert!(result.is_err());
 
         Ok(())
     }
