@@ -1,6 +1,7 @@
 pub mod command_builder;
 pub mod commands;
 pub mod info;
+pub mod frame;
 pub mod redis_args;
 pub mod replica_slave;
 pub mod resp_lexer;

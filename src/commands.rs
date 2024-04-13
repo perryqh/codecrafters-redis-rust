@@ -153,7 +153,7 @@ impl CommandResponse for EchoCommand {
 mod tests {
     use tokio::time::sleep;
 
-    use crate::{command_builder::parse_command, info::DEFAULT_MASTER_REPLID};
+    use crate::{command_builder::parse_command, info::DEFAULT_MASTER_REPLID, resp_lexer::{RESPArray, RESPValue}};
 
     use super::*;
     use bytes::Bytes;
