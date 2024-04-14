@@ -1,13 +1,25 @@
 use clap::Parser;
 
+use crate::info::Info;
+
 #[derive(Parser, Debug)]
 #[clap(name = "redis-rust", version, author, about = "A limited Redis server")]
-struct Cli {
+pub struct Cli {
     #[clap(short, long, default_value = "6379")]
-    port: u16,
+    pub port: u16,
 
     #[clap(long, value_delimiter = ' ', num_args = 2)]
-    replicaof: Option<Vec<String>>,
+    pub replicaof: Option<Vec<String>>,
+}
+
+impl Cli {
+    pub fn to_info(&self) -> Info {
+        Info::builder()
+            .self_port(Some(self.port))
+            .replication_of_host(self.replicaof.as_ref().map(|v| v[0].clone()))
+            .replication_of_port(self.replicaof.as_ref().and_then(|v| v[1].parse().ok()))
+            .build()
+    }
 }
 
 #[cfg(test)]
@@ -39,5 +51,24 @@ mod tests {
             cli.replicaof,
             Some(vec!["host.com".to_string(), "4321".to_string()])
         );
+    }
+
+    #[test]
+    fn test_to_info() {
+        let cli = Cli::parse_from(&[
+            "redis-rust",
+            "--port",
+            "1234",
+            "--replicaof",
+            "host.com",
+            "4321",
+        ]);
+        let info = cli.to_info();
+        assert_eq!(info.self_port, 1234);
+        assert_eq!(
+            info.replication.replication_of_host,
+            Some("host.com".to_string())
+        );
+        assert_eq!(info.replication.replication_of_port, Some(4321));
     }
 }
