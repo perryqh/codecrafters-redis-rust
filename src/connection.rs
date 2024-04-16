@@ -102,6 +102,14 @@ impl Connection {
                 self.stream.write_all(val).await?;
                 self.stream.write_all(b"\r\n").await?;
             }
+            Frame::RdbFile(file_bytes) => {
+                let len = file_bytes.len();
+
+                self.stream.write_u8(b'$').await?;
+                self.write_decimal(len as u64).await?;
+                self.stream.write_all(file_bytes).await?;
+                // no \r\n for rdb files
+            }
             Frame::Array(_val) => unreachable!(),
         }
 

@@ -19,6 +19,7 @@ pub enum Frame {
     Null,
     OK,
     Array(Vec<Frame>),
+    RdbFile(Bytes),
 }
 
 #[derive(Debug)]
@@ -208,6 +209,7 @@ impl fmt::Display for Frame {
 
                 Ok(())
             }
+            Frame::RdbFile(_) => write!(fmt, "RDB file"),
         }
     }
 }

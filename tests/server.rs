@@ -1,5 +1,4 @@
-use bytes::Bytes;
-use redis_starter_rust::info::{Info, DEFAULT_MASTER_REPLID};
+use redis_starter_rust::info::DEFAULT_MASTER_REPLID;
 use redis_starter_rust::store::Store;
 use redis_starter_rust::{array_of_bulks, server};
 use std::net::SocketAddr;
@@ -258,6 +257,5 @@ async fn test_psync() -> anyhow::Result<()> {
     stream.read_exact(&mut response).await.unwrap();
     let response_str = String::from_utf8(response.to_vec()).unwrap();
     assert_eq!(expected, response_str);
-
     Ok(())
 }

@@ -51,4 +51,11 @@ impl Store {
         let mut data = self.data.lock().unwrap();
         data.remove(&key);
     }
+
+    pub fn as_rdb(&self) -> Bytes {
+        let data = base64::decode(EMPTY_RDB).unwrap();
+        data.into()
+    }
 }
+
+pub const EMPTY_RDB: &'static str = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog==";

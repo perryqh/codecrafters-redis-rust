@@ -23,14 +23,27 @@ impl Psync {
 
     pub(crate) async fn apply(self, dst: &mut Connection, store: &Store) -> anyhow::Result<()> {
         let info = crate::info::Info::from_store(&store)?;
-        let response = match info.replication.role.as_str() {
-            "master" => Frame::Simple(format!(
-                "FULLRESYNC {} 0",
-                info.replication.master_replid.unwrap_or_default()
-            )),
-            _ => Frame::Error("Not a master server".to_string()),
-        };
 
-        dst.write_frame(&response).await.map_err(|e| e.into())
+        if info.is_replica() {
+            let error = Frame::Error("Not a master server".to_string());
+            dst.write_frame(&error).await.map_err(anyhow::Error::from)?;
+            return Ok(());
+        }
+
+        let response = Frame::Simple(format!(
+            "FULLRESYNC {} 0",
+            info.replication.master_replid.unwrap_or_default()
+        ));
+
+        dst.write_frame(&response)
+            .await
+            .map_err(anyhow::Error::from)?;
+
+        let rdb = store.as_rdb();
+        let rdb = Frame::RdbFile(rdb);
+
+        dst.write_frame(&rdb).await.map_err(anyhow::Error::from)?;
+
+        Ok(())
     }
 }
