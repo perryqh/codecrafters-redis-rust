@@ -17,6 +17,7 @@ pub enum Frame {
     Integer(u64),
     Bulk(Bytes),
     Null,
+    OK,
     Array(Vec<Frame>),
 }
 
@@ -194,6 +195,7 @@ impl fmt::Display for Frame {
                 Err(_) => write!(fmt, "{:?}", msg),
             },
             Frame::Null => "(nil)".fmt(fmt),
+            Frame::OK => "OK".fmt(fmt),
             Frame::Array(parts) => {
                 for (i, part) in parts.iter().enumerate() {
                     if i > 0 {

@@ -91,6 +91,9 @@ impl Connection {
             Frame::Null => {
                 self.stream.write_all(b"$-1\r\n").await?;
             }
+            Frame::OK => {
+                self.stream.write_all(b"+OK\r\n").await?;
+            }
             Frame::Bulk(val) => {
                 let len = val.len();
 

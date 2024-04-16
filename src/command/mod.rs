@@ -5,12 +5,18 @@ pub mod echo;
 use echo::Echo;
 pub mod unknown;
 use unknown::Unknown;
+pub mod get;
+use get::Get;
+pub mod set;
+use set::Set;
 
 #[derive(Debug)]
 pub enum Command {
     Ping(Ping),
     Echo(Echo),
     Unknown(Unknown),
+    Get(Get),
+    Set(Set),
 }
 
 impl Command {
@@ -20,6 +26,8 @@ impl Command {
         let command = match command_name.to_lowercase().as_str() {
             "ping" => Command::Ping(Ping::parse_frames(&mut parse)?),
             "echo" => Command::Echo(Echo::parse_frames(&mut parse)?),
+            "get" => Command::Get(Get::parse_frames(&mut parse)?),
+            "set" => Command::Set(Set::parse_frames(&mut parse)?),
             _ => {
                 return Ok(Command::Unknown(Unknown::new(command_name)));
             }
@@ -34,6 +42,8 @@ impl Command {
             Command::Ping(cmd) => cmd.apply(connection).await,
             Command::Echo(cmd) => cmd.apply(connection).await,
             Command::Unknown(cmd) => cmd.apply(connection).await,
+            Command::Get(cmd) => cmd.apply(connection, store).await,
+            Command::Set(cmd) => cmd.apply(connection, store).await,
         }
     }
 }
