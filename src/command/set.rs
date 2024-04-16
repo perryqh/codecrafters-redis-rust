@@ -27,10 +27,8 @@ impl Set {
         let mut expiry = None;
 
         match parse.next_string() {
-            Ok(s) if s == "PX" => {
-                if s == "PX" {
-                    expiry = Some(parse.next_int()?);
-                }
+            Ok(s) if s.to_uppercase() == "PX" => {
+                expiry = Some(parse.next_int()?);
             }
             _ => {}
         }
