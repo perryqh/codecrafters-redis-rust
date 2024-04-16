@@ -9,6 +9,12 @@ pub mod get;
 use get::Get;
 pub mod set;
 use set::Set;
+pub mod info;
+use info::Info;
+pub mod repl_conf;
+use repl_conf::ReplConf;
+pub mod psync;
+use psync::Psync;
 
 #[derive(Debug)]
 pub enum Command {
@@ -17,6 +23,9 @@ pub enum Command {
     Unknown(Unknown),
     Get(Get),
     Set(Set),
+    Info(Info),
+    ReplConf(ReplConf),
+    Psync(Psync),
 }
 
 impl Command {
@@ -28,6 +37,9 @@ impl Command {
             "echo" => Command::Echo(Echo::parse_frames(&mut parse)?),
             "get" => Command::Get(Get::parse_frames(&mut parse)?),
             "set" => Command::Set(Set::parse_frames(&mut parse)?),
+            "info" => Command::Info(Info::parse_frames(&mut parse)?),
+            "replconf" => Command::ReplConf(ReplConf::parse_frames(&mut parse)?),
+            "psync" => Command::Psync(Psync::parse_frames(&mut parse)?),
             _ => {
                 return Ok(Command::Unknown(Unknown::new(command_name)));
             }
@@ -44,6 +56,9 @@ impl Command {
             Command::Unknown(cmd) => cmd.apply(connection).await,
             Command::Get(cmd) => cmd.apply(connection, store).await,
             Command::Set(cmd) => cmd.apply(connection, store).await,
+            Command::Info(cmd) => cmd.apply(connection, store).await,
+            Command::ReplConf(cmd) => cmd.apply(connection, store).await,
+            Command::Psync(cmd) => cmd.apply(connection, store).await,
         }
     }
 }

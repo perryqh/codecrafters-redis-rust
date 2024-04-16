@@ -7,7 +7,6 @@ async fn main() -> anyhow::Result<()> {
     let info = cli.to_info();
     let store = Store::new();
     info.write(&store)?;
-
     let listener = tokio::net::TcpListener::bind(info.bind_address()).await?;
     server::run(listener, store.clone()).await?;
 

@@ -49,7 +49,7 @@ impl Default for Info {
 }
 
 impl Info {
-    pub fn is_slave(&self) -> bool {
+    pub fn is_replica(&self) -> bool {
         self.replication.role == "slave"
     }
 }
@@ -137,7 +137,7 @@ impl Info {
         let master_replid = if replication_role == "slave" {
             None
         } else {
-            Some("8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb".to_string())
+            Some(DEFAULT_MASTER_REPLID.to_string())
         };
         let master_repl_offset = if replication_role == "slave" {
             None
