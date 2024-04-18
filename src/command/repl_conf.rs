@@ -38,7 +38,7 @@ impl ReplConf {
         })
     }
 
-    pub(crate) async fn apply(self, dst: &mut Connection, store: &Store) -> anyhow::Result<()> {
+    pub(crate) async fn apply(self, dst: &mut Connection, _store: &Store) -> anyhow::Result<()> {
         dst.write_frame(&Frame::OK).await.map_err(|e| e.into())
     }
 }

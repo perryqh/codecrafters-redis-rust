@@ -1,5 +1,3 @@
-use anyhow::bail;
-
 use crate::{connection::Connection, frame::Frame, parse::Parse, store::Store};
 
 #[derive(Debug, Default)]
@@ -38,11 +36,6 @@ impl Psync {
         dst.write_frame(&response)
             .await
             .map_err(anyhow::Error::from)?;
-
-        let rdb = store.as_rdb();
-        let rdb = Frame::RdbFile(rdb);
-
-        dst.write_frame(&rdb).await.map_err(anyhow::Error::from)?;
 
         Ok(())
     }

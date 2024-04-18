@@ -1,7 +1,8 @@
 use tokio::net::TcpListener;
 
 use crate::{
-    command::Command, connection::Connection, info::Info, replicator::Replicator, store::Store,
+    command::Command, connection::Connection, info::Info, publisher, replicator::Replicator,
+    store::Store,
 };
 
 pub async fn run(listener: TcpListener, store: Store) -> anyhow::Result<()> {
@@ -11,12 +12,9 @@ pub async fn run(listener: TcpListener, store: Store) -> anyhow::Result<()> {
     loop {
         let store = store.clone();
         let (socket, _) = listener.accept().await?;
-        let mut handler = Handler {
-            store,
-            connection: Connection::new(socket),
-        };
+        let mut handler = Handler {};
         tokio::spawn(async move {
-            if let Err(err) = handler.run().await {
+            if let Err(err) = handler.run(store, Connection::new(socket)).await {
                 eprintln!("connection error: {:?}", err);
             }
         });
@@ -36,16 +34,24 @@ async fn setup_subscriber(store: Store) -> anyhow::Result<()> {
     Ok(())
 }
 
-struct Handler {
-    store: Store,
-    connection: Connection,
-}
+struct Handler {}
 
 impl Handler {
-    async fn run(&mut self) -> anyhow::Result<()> {
-        while let Some(frame) = self.connection.read_frame().await? {
+    async fn run(&mut self, store: Store, mut connection: Connection) -> anyhow::Result<()> {
+        let mut subscriber = false;
+        while let Some(frame) = connection.read_frame().await? {
             let command = Command::from_frame(frame)?;
-            command.apply(&self.store, &mut self.connection).await?;
+            match &command {
+                Command::Psync(_) => {
+                    subscriber = true;
+                }
+                _ => {}
+            }
+            command.apply(&store, &mut connection).await?;
+            if subscriber {
+                let _ = publisher::add_connection(connection, &store).await;
+                break; // for some reason, if we attempt to read another frame, the replicant errors out
+            }
         }
         Ok(())
     }

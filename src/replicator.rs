@@ -65,8 +65,6 @@ async fn hand_shake(
     connection.write_frame(command).await?;
     match connection.read_frame().await? {
         Some(response) => {
-            eprintln!("response: {:?}", response);
-            eprintln!("expected_response: {:?}", expected_response);
             ensure!(
                 response == expected_response,
                 "replicator received invalid response. Expected: {:?}, got: {:?}",

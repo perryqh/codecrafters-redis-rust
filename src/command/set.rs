@@ -6,10 +6,11 @@ use crate::{
     connection::Connection,
     frame::Frame,
     parse::Parse,
+    publisher::{publish, Action},
     store::{Store, DEFAULT_EXPIRY},
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct Set {
     key: Bytes,
     value: Bytes,
@@ -38,7 +39,16 @@ impl Set {
 
     pub(crate) async fn apply(self, dst: &mut Connection, store: &Store) -> anyhow::Result<()> {
         let ttl = self.expiry.unwrap_or(DEFAULT_EXPIRY);
+        let cloned_self = self.clone();
+
         store.set(self.key, self.value, Duration::from_millis(ttl));
+
+        let action = Action::Set {
+            key: cloned_self.key,
+            value: cloned_self.value,
+            expiry: cloned_self.expiry,
+        };
+        publish(action).await?;
 
         let response = Frame::OK;
         dst.write_frame(&response).await.map_err(|e| e.into())
