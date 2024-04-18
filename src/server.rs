@@ -50,7 +50,9 @@ impl Handler {
             command.apply(&store, &mut connection).await?;
             if subscriber {
                 let _ = publisher::add_connection(connection, &store).await;
-                break; // for some reason, if we attempt to read another frame, the replicant errors out
+                // TODO: for some reason, if we attempt to read another frame, the replicant errors out
+                // specifically: `0 == self.stream.read_buf(&mut self.buffer).await?`
+                break; 
             }
         }
         Ok(())
