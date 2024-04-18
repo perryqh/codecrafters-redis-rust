@@ -1,5 +1,6 @@
 use crate::{connection::Connection, frame::Frame, parse::Parse, store::Store};
 pub mod ping;
+use anyhow::Context;
 use ping::Ping;
 pub mod echo;
 use echo::Echo;
@@ -30,7 +31,7 @@ pub enum Command {
 
 impl Command {
     pub fn from_frame(frame: Frame) -> anyhow::Result<Command> {
-        let mut parse = Parse::new(frame)?;
+        let mut parse = Parse::new(frame).context("erroring parsing frame")?;
         let command_name = parse.next_string()?.to_lowercase();
         let command = match command_name.to_lowercase().as_str() {
             "ping" => Command::Ping(Ping::parse_frames(&mut parse)?),
@@ -49,13 +50,18 @@ impl Command {
         Ok(command)
     }
 
-    pub async fn apply(self, store: &Store, connection: &mut Connection) -> anyhow::Result<()> {
+    pub async fn apply(
+        self,
+        store: &Store,
+        connection: &mut Connection,
+        respond: bool,
+    ) -> anyhow::Result<()> {
         match self {
             Command::Ping(cmd) => cmd.apply(connection).await,
             Command::Echo(cmd) => cmd.apply(connection).await,
             Command::Unknown(cmd) => cmd.apply(connection).await,
             Command::Get(cmd) => cmd.apply(connection, store).await,
-            Command::Set(cmd) => cmd.apply(connection, store).await,
+            Command::Set(cmd) => cmd.apply(connection, store, respond).await,
             Command::Info(cmd) => cmd.apply(connection, store).await,
             Command::ReplConf(cmd) => cmd.apply(connection, store).await,
             Command::Psync(cmd) => cmd.apply(connection, store).await,

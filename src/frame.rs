@@ -85,8 +85,16 @@ impl Frame {
                     // Read the bulk string
                     let len: usize = get_decimal(src)?.try_into()?;
 
-                    // skip that number of bytes + 2 (\r\n).
-                    skip(src, len + 2)
+                    match skip(src, len) {
+                        Ok(_) => {
+                            // special case for RDB, which does not have trailing \r\n
+                            match peek_u8(src) {
+                                Ok(b'\r') => skip(src, 2),
+                                _ => Ok(()),
+                            }
+                        }
+                        Err(_) => return Err(Error::Incomplete),
+                    }
                 }
             }
             b'*' => {
@@ -139,16 +147,16 @@ impl Frame {
                 } else {
                     // Read the bulk string
                     let len = get_decimal(src)?.try_into()?;
-                    let n = len + 2;
-
-                    if src.remaining() < n {
-                        return Err(Error::Incomplete);
-                    }
 
                     let data = Bytes::copy_from_slice(&src.chunk()[..len]);
 
-                    // skip that number of bytes + 2 (\r\n).
-                    skip(src, n)?;
+                    skip(src, len)?;
+                    match peek_u8(src) {
+                        Ok(b'\r') => {
+                            skip(src, 2)?;
+                        }
+                        _ => {}
+                    }
 
                     Ok(Frame::Bulk(data))
                 }

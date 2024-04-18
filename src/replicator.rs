@@ -1,4 +1,4 @@
-use anyhow::ensure;
+use anyhow::{ensure, Context};
 use bytes::Bytes;
 
 use crate::{connection::Connection, frame::Frame, info::Info, store::Store};
@@ -20,38 +20,52 @@ impl Replicator {
 
         hand_shake(
             &mut master_connection,
-            &ping_fame(),
+            &ping_fame()?,
             Frame::Simple("PONG".into()),
         )
         .await?;
 
         hand_shake(
             &mut master_connection,
-            &listening_port_frame(&self.info),
+            &listening_port_frame(&self.info)?,
             Frame::Simple("OK".into()),
         )
         .await?;
 
         hand_shake(
             &mut master_connection,
-            &capability_bytes(),
+            &capability_bytes()?,
             Frame::Simple("OK".into()),
         )
         .await?;
 
-        hand_shake(
-            &mut master_connection,
-            &psync_bytes().await,
-            Frame::Simple("OK".into()),
-        )
-        .await?;
+        master_connection.write_frame(&psync_bytes().await?).await?;
+        match master_connection.read_frame().await? {
+            Some(Frame::Simple(response)) => {
+                // TODO: do something with response
+            }
+            _ => anyhow::bail!("replicator received invalid response"),
+        }
 
-        // loop {
-        //     if let Some(frame) = master_connection.read_frame().await? {
-        //         let command = crate::command::Command::from_frame(frame)?;
-        //         command.apply(&self.store, &mut master_connection).await?;
-        //     }
-        // }
+        loop {
+            if let Some(frame) = master_connection.read_frame().await? {
+                match &frame {
+                    Frame::Array(array) => {
+                        eprintln!("rep array: {:?}", array);
+                        let command = crate::command::Command::from_frame(frame)
+                            .context("expecting update replica commands")?;
+                        eprintln!("rep command: {:?}", command);
+                        command
+                            .apply(&self.store, &mut master_connection, false)
+                            .await?;
+                    }
+                    _ => {
+                        eprintln!("dropping rdb file {:?}", frame);
+                        // dropping rdb file
+                    }
+                }
+            }
+        }
 
         Ok(())
     }
@@ -81,35 +95,35 @@ async fn hand_shake(
     Ok(())
 }
 
-fn ping_fame() -> Frame {
+fn ping_fame() -> anyhow::Result<Frame> {
     let mut array = Frame::array();
-    array.push_bulk(Bytes::from("PING"));
+    array.push_bulk(Bytes::from("PING"))?;
 
-    array
+    Ok(array)
 }
 
-fn listening_port_frame(info: &Info) -> Frame {
+fn listening_port_frame(info: &Info) -> anyhow::Result<Frame> {
     let port = info.self_port;
 
     let mut array = Frame::array();
-    array.push_bulk(Bytes::from("REPLCONF"));
-    array.push_bulk(Bytes::from("listening-port"));
-    array.push_bulk(Bytes::from(port.to_string()));
-    array
+    array.push_bulk(Bytes::from("REPLCONF"))?;
+    array.push_bulk(Bytes::from("listening-port"))?;
+    array.push_bulk(Bytes::from(port.to_string()))?;
+    Ok(array)
 }
 
-fn capability_bytes() -> Frame {
+fn capability_bytes() -> anyhow::Result<Frame> {
     let mut array = Frame::array();
-    array.push_bulk(Bytes::from("REPLCONF"));
-    array.push_bulk(Bytes::from("capa"));
-    array.push_bulk(Bytes::from("psync2"));
-    array
+    array.push_bulk(Bytes::from("REPLCONF"))?;
+    array.push_bulk(Bytes::from("capa"))?;
+    array.push_bulk(Bytes::from("psync2"))?;
+    Ok(array)
 }
 
-async fn psync_bytes() -> Frame {
+async fn psync_bytes() -> anyhow::Result<Frame> {
     let mut array = Frame::array();
-    array.push_bulk(Bytes::from("PSYNC"));
-    array.push_bulk(Bytes::from("?"));
-    array.push_bulk(Bytes::from("-1"));
-    array
+    array.push_bulk(Bytes::from("PSYNC"))?;
+    array.push_bulk(Bytes::from("?"))?;
+    array.push_bulk(Bytes::from("-1"))?;
+    Ok(array)
 }

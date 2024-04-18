@@ -37,7 +37,12 @@ impl Set {
         Ok(Set::new(key.into(), value.into(), expiry))
     }
 
-    pub(crate) async fn apply(self, dst: &mut Connection, store: &Store) -> anyhow::Result<()> {
+    pub(crate) async fn apply(
+        self,
+        dst: &mut Connection,
+        store: &Store,
+        respond: bool,
+    ) -> anyhow::Result<()> {
         let ttl = self.expiry.unwrap_or(DEFAULT_EXPIRY);
         let cloned_self = self.clone();
 
@@ -50,7 +55,11 @@ impl Set {
         };
         publish(action).await?;
 
-        let response = Frame::OK;
-        dst.write_frame(&response).await.map_err(|e| e.into())
+        if respond {
+            let response = Frame::OK;
+            dst.write_frame(&response).await.map_err(|e| e.into())
+        } else {
+            Ok(())
+        }
     }
 }
