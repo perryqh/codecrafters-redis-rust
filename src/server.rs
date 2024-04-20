@@ -1,8 +1,9 @@
+
+
 use tokio::net::TcpListener;
 
 use crate::{
-    command::Command, connection::Connection, info::Info, publisher, replicator::Replicator,
-    store::Store,
+    command::Command, comms::Comms, connection::Connection, info::Info, publisher, replicator::Replicator, store::Store
 };
 
 pub async fn run(listener: TcpListener, store: Store) -> anyhow::Result<()> {
@@ -14,7 +15,11 @@ pub async fn run(listener: TcpListener, store: Store) -> anyhow::Result<()> {
         let (socket, _) = listener.accept().await?;
         let mut handler = Handler {};
         tokio::spawn(async move {
-            if let Err(err) = handler.run(store, Connection::new(socket)).await {
+            let (reader, writer) = socket.into_split();
+            if let Err(err) = handler
+                .run(store, Connection::new(reader, writer, false))
+                .await
+            {
                 eprintln!("connection error: {:?}", err);
             }
         });
@@ -37,9 +42,9 @@ async fn setup_subscriber(store: Store) -> anyhow::Result<()> {
 struct Handler {}
 
 impl Handler {
-    async fn run(&mut self, store: Store, mut connection: Connection) -> anyhow::Result<()> {
+    async fn run<C: Comms + 'static>(&mut self, store: Store, mut comms: C) -> anyhow::Result<()> {
         let mut subscriber = false;
-        while let Some(frame) = connection.read_frame().await? {
+        while let Some(frame) = comms.read_frame().await? {
             let command = Command::from_frame(frame)?;
             match &command {
                 Command::Psync(_) => {
@@ -47,9 +52,10 @@ impl Handler {
                 }
                 _ => {}
             }
-            command.apply(&store, &mut connection, true).await?;
+            command.apply(&store, &mut comms).await?;
             if subscriber {
-                let _ = publisher::add_connection(connection, &store).await;
+               let _ = publisher::add_connection(comms, &store).await;
+                
                 // TODO: for some reason, if we attempt to read another frame, the replicant errors out
                 // specifically: `0 == self.stream.read_buf(&mut self.buffer).await?`
                 break;

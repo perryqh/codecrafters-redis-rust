@@ -1,7 +1,7 @@
 use anyhow::{ensure, Context};
 use bytes::Bytes;
 
-use crate::{connection::Connection, frame::Frame, info::Info, store::Store};
+use crate::{comms::Comms, connection::Connection, frame::Frame, info::Info, store::Store};
 
 pub struct Replicator {
     store: Store,
@@ -15,8 +15,9 @@ impl Replicator {
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
         let master_address = self.info.replication.master_address()?;
-        let stream = tokio::net::TcpStream::connect(master_address).await?;
-        let mut master_connection = Connection::new(stream);
+        let socket = tokio::net::TcpStream::connect(master_address).await?;
+        let (reader, writer) = socket.into_split();
+        let mut master_connection = Connection::new(reader, writer, true);
 
         hand_shake(
             &mut master_connection,
@@ -40,6 +41,7 @@ impl Replicator {
         .await?;
 
         master_connection.write_frame(&psync_bytes().await?).await?;
+
         match master_connection.read_frame().await? {
             Some(Frame::Simple(response)) => {
                 // TODO: do something with response
@@ -50,18 +52,13 @@ impl Replicator {
         loop {
             if let Some(frame) = master_connection.read_frame().await? {
                 match &frame {
-                    Frame::Array(array) => {
-                        eprintln!("rep array: {:?}", array);
+                    Frame::Array(_) => {
                         let command = crate::command::Command::from_frame(frame)
                             .context("expecting update replica commands")?;
-                        eprintln!("rep command: {:?}", command);
-                        command
-                            .apply(&self.store, &mut master_connection, false)
-                            .await?;
+                        command.apply(&self.store, &mut master_connection).await?;
                     }
                     _ => {
                         eprintln!("dropping rdb file {:?}", frame);
-                        // dropping rdb file
                     }
                 }
             }
@@ -71,13 +68,13 @@ impl Replicator {
     }
 }
 
-async fn hand_shake(
-    connection: &mut Connection,
+async fn hand_shake<C: Comms>(
+    comms: &mut C,
     command: &Frame,
     expected_response: Frame,
 ) -> anyhow::Result<()> {
-    connection.write_frame(command).await?;
-    match connection.read_frame().await? {
+    comms.write_frame(command).await?;
+    match comms.read_frame().await? {
         Some(response) => {
             ensure!(
                 response == expected_response,

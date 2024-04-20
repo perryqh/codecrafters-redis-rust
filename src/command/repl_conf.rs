@@ -1,6 +1,6 @@
 use anyhow::bail;
 
-use crate::{connection::Connection, frame::Frame, parse::Parse, store::Store};
+use crate::{comms::Comms, frame::Frame, parse::Parse, store::Store};
 
 #[derive(Debug, Default)]
 pub struct ReplConf {
@@ -38,7 +38,7 @@ impl ReplConf {
         })
     }
 
-    pub(crate) async fn apply(self, dst: &mut Connection, _store: &Store) -> anyhow::Result<()> {
-        dst.write_frame(&Frame::OK).await.map_err(|e| e.into())
+    pub(crate) async fn apply<C: Comms>(self, comms: &mut C, _store: &Store) -> anyhow::Result<()> {
+        comms.write_frame(&Frame::OK).await.map_err(|e| e.into())
     }
 }

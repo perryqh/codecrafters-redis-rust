@@ -1,4 +1,4 @@
-use crate::{connection::Connection, frame::Frame, parse::Parse, store::Store};
+use crate::{comms::Comms, frame::Frame, parse::Parse, store::Store};
 
 #[derive(Debug, Default)]
 pub struct Psync {
@@ -19,12 +19,15 @@ impl Psync {
         })
     }
 
-    pub(crate) async fn apply(self, dst: &mut Connection, store: &Store) -> anyhow::Result<()> {
+    pub(crate) async fn apply<C: Comms>(self, comms: &mut C, store: &Store) -> anyhow::Result<()> {
         let info = crate::info::Info::from_store(&store)?;
 
         if info.is_replica() {
             let error = Frame::Error("Not a master server".to_string());
-            dst.write_frame(&error).await.map_err(anyhow::Error::from)?;
+            comms
+                .write_frame(&error)
+                .await
+                .map_err(anyhow::Error::from)?;
             return Ok(());
         }
 
@@ -33,7 +36,8 @@ impl Psync {
             info.replication.master_replid.unwrap_or_default()
         ));
 
-        dst.write_frame(&response)
+        comms
+            .write_frame(&response)
             .await
             .map_err(anyhow::Error::from)?;
 

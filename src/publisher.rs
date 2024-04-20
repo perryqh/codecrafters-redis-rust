@@ -3,9 +3,9 @@ use once_cell::sync::Lazy;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::{connection::Connection, frame::Frame, store::Store};
+use crate::{comms::Comms, frame::Frame, store::Store};
 
-static SUBSCRIBERS: Lazy<Mutex<Vec<Arc<Mutex<Connection>>>>> = Lazy::new(|| Mutex::new(Vec::new()));
+static SUBSCRIBERS: Lazy<Mutex<Vec<Arc<Mutex<dyn Comms>>>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
 pub enum Action {
     Set {
@@ -42,9 +42,9 @@ async fn publish_frame(frame: Frame) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn add_connection(connection: Connection, store: &Store) -> anyhow::Result<()> {
+pub async fn add_connection<C: Comms + 'static>(comms: C, store: &Store) -> anyhow::Result<()> {
     let mut subscribers = SUBSCRIBERS.lock().await;
-    subscribers.push(Arc::new(Mutex::new(connection)));
+    subscribers.push(Arc::new(Mutex::new(comms)));
 
     let rdb = store.as_rdb();
     let rdb = Frame::RdbFile(rdb);

@@ -1,37 +1,66 @@
-use crate::frame::{self, Frame};
+use crate::{
+    comms::Comms,
+    frame::{self, Frame},
+};
 
 use anyhow::ensure;
 use bytes::{Buf, BytesMut};
 use std::io::{self, Cursor};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
-use tokio::net::TcpStream;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 
 #[derive(Debug)]
-pub struct Connection {
-    stream: BufWriter<TcpStream>,
-
+pub struct Connection<R: AsyncReadExt + Unpin, W: AsyncWriteExt + Unpin> {
+    writer: BufWriter<W>,
+    reader: BufReader<R>,
     buffer: BytesMut,
+    is_follower_receiving_sync_request: bool,
 }
 
-impl Connection {
-    pub fn new(socket: TcpStream) -> Connection {
-        Connection {
-            stream: BufWriter::new(socket),
-            buffer: BytesMut::with_capacity(4 * 1024),
+#[async_trait::async_trait]
+impl<R: AsyncReadExt + Unpin + Send + Sync, W: AsyncWriteExt + Unpin + Send + Sync> Comms for Connection<R, W> {
+    async fn write_frame(&mut self, frame: &Frame) -> io::Result<()> {
+        match frame {
+            Frame::Array(val) => {
+                self.writer.write_u8(b'*').await?;
+
+                self.write_decimal(val.len() as u64).await?;
+
+                for entry in &**val {
+                    self.write_value(entry).await?;
+                }
+            }
+            _ => self.write_value(frame).await?,
         }
+
+        self.writer.flush().await
     }
 
-    pub async fn read_frame(&mut self) -> anyhow::Result<Option<Frame>> {
+    async fn read_frame(&mut self) -> anyhow::Result<Option<Frame>> {
         loop {
             if let Some(frame) = self.parse_frame()? {
                 return Ok(Some(frame));
             }
 
-            if 0 == self.stream.read_buf(&mut self.buffer).await? {
+            if 0 == self.reader.read_buf(&mut self.buffer).await? {
                 ensure!(self.buffer.is_empty(), "connection reset by peer");
 
                 return Ok(None);
             }
+        }
+    }
+
+    fn is_follower_receiving_sync_request(&self) -> bool {
+        self.is_follower_receiving_sync_request
+    }
+}
+
+impl<R: AsyncReadExt + Unpin, W: AsyncWriteExt + Unpin> Connection<R, W> {
+    pub fn new(reader: R, writer: W, is_follower_receiving_sync_request: bool) -> Connection<R, W> {
+        Connection {
+            writer: BufWriter::new(writer),
+            reader: BufReader::new(reader),
+            buffer: BytesMut::with_capacity(4 * 1024),
+            is_follower_receiving_sync_request,
         }
     }
 
@@ -55,59 +84,43 @@ impl Connection {
             Err(e) => Err(e.into()),
         }
     }
-    pub async fn write_frame(&mut self, frame: &Frame) -> io::Result<()> {
-        match frame {
-            Frame::Array(val) => {
-                self.stream.write_u8(b'*').await?;
-
-                self.write_decimal(val.len() as u64).await?;
-
-                for entry in &**val {
-                    self.write_value(entry).await?;
-                }
-            }
-            _ => self.write_value(frame).await?,
-        }
-
-        self.stream.flush().await
-    }
 
     async fn write_value(&mut self, frame: &Frame) -> io::Result<()> {
         match frame {
             Frame::Simple(val) => {
-                self.stream.write_u8(b'+').await?;
-                self.stream.write_all(val.as_bytes()).await?;
-                self.stream.write_all(b"\r\n").await?;
+                self.writer.write_u8(b'+').await?;
+                self.writer.write_all(val.as_bytes()).await?;
+                self.writer.write_all(b"\r\n").await?;
             }
             Frame::Error(val) => {
-                self.stream.write_u8(b'-').await?;
-                self.stream.write_all(val.as_bytes()).await?;
-                self.stream.write_all(b"\r\n").await?;
+                self.writer.write_u8(b'-').await?;
+                self.writer.write_all(val.as_bytes()).await?;
+                self.writer.write_all(b"\r\n").await?;
             }
             Frame::Integer(val) => {
-                self.stream.write_u8(b':').await?;
+                self.writer.write_u8(b':').await?;
                 self.write_decimal(*val).await?;
             }
             Frame::Null => {
-                self.stream.write_all(b"$-1\r\n").await?;
+                self.writer.write_all(b"$-1\r\n").await?;
             }
             Frame::OK => {
-                self.stream.write_all(b"+OK\r\n").await?;
+                self.writer.write_all(b"+OK\r\n").await?;
             }
             Frame::Bulk(val) => {
                 let len = val.len();
 
-                self.stream.write_u8(b'$').await?;
+                self.writer.write_u8(b'$').await?;
                 self.write_decimal(len as u64).await?;
-                self.stream.write_all(val).await?;
-                self.stream.write_all(b"\r\n").await?;
+                self.writer.write_all(val).await?;
+                self.writer.write_all(b"\r\n").await?;
             }
             Frame::RdbFile(file_bytes) => {
                 let len = file_bytes.len();
 
-                self.stream.write_u8(b'$').await?;
+                self.writer.write_u8(b'$').await?;
                 self.write_decimal(len as u64).await?;
-                self.stream.write_all(file_bytes).await?;
+                self.writer.write_all(file_bytes).await?;
                 // no \r\n for rdb files
             }
             Frame::Array(_val) => unreachable!(),
@@ -124,8 +137,8 @@ impl Connection {
         write!(&mut buf, "{}", val)?;
 
         let pos = buf.position() as usize;
-        self.stream.write_all(&buf.get_ref()[..pos]).await?;
-        self.stream.write_all(b"\r\n").await?;
+        self.writer.write_all(&buf.get_ref()[..pos]).await?;
+        self.writer.write_all(b"\r\n").await?;
 
         Ok(())
     }

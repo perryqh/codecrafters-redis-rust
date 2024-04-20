@@ -1,6 +1,3 @@
-//! Provides a type representing a Redis protocol frame as well as utilities for
-//! parsing frames from a byte array.
-
 use anyhow::bail;
 use bytes::{Buf, Bytes};
 use std::convert::TryInto;
@@ -9,7 +6,6 @@ use std::io::Cursor;
 use std::num::TryFromIntError;
 use std::string::FromUtf8Error;
 
-/// A frame in the Redis protocol.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Frame {
     Simple(String),
@@ -47,11 +43,6 @@ impl Frame {
         }
     }
 
-    /// Push an "integer" frame into the array. `self` must be an Array frame.
-    ///
-    /// # Panics
-    ///
-    /// panics if `self` is not an array
     pub(crate) fn push_int(&mut self, value: u64) -> anyhow::Result<()> {
         match self {
             Frame::Array(vec) => {
@@ -62,7 +53,6 @@ impl Frame {
         }
     }
 
-    /// Checks if an entire message can be decoded from `src`
     pub fn check(src: &mut Cursor<&[u8]>) -> Result<(), Error> {
         match get_u8(src)? {
             b'+' => {
@@ -110,23 +100,18 @@ impl Frame {
         }
     }
 
-    /// The message has already been validated with `check`.
     pub fn parse(src: &mut Cursor<&[u8]>) -> Result<Frame, Error> {
         match get_u8(src)? {
             b'+' => {
-                // Read the line and convert it to `Vec<u8>`
                 let line = get_line(src)?.to_vec();
 
-                // Convert the line to a String
                 let string = String::from_utf8(line)?;
 
                 Ok(Frame::Simple(string))
             }
             b'-' => {
-                // Read the line and convert it to `Vec<u8>`
                 let line = get_line(src)?.to_vec();
 
-                // Convert the line to a String
                 let string = String::from_utf8(line)?;
 
                 Ok(Frame::Error(string))
@@ -145,7 +130,6 @@ impl Frame {
 
                     Ok(Frame::Null)
                 } else {
-                    // Read the bulk string
                     let len = get_decimal(src)?.try_into()?;
 
                     let data = Bytes::copy_from_slice(&src.chunk()[..len]);
@@ -173,11 +157,6 @@ impl Frame {
             }
             _ => unimplemented!(),
         }
-    }
-
-    /// Converts the frame to an "unexpected frame" error
-    pub(crate) fn to_error(&self) -> anyhow::Error {
-        anyhow::Error::new(std::fmt::Error).context(format!("unexpected frame: {}", self))
     }
 }
 
@@ -208,7 +187,6 @@ impl fmt::Display for Frame {
             Frame::Array(parts) => {
                 for (i, part) in parts.iter().enumerate() {
                     if i > 0 {
-                        // use space as the array element display separator
                         write!(fmt, " ")?;
                     }
 
@@ -247,7 +225,6 @@ fn skip(src: &mut Cursor<&[u8]>, n: usize) -> Result<(), Error> {
     Ok(())
 }
 
-/// Read a new-line terminated decimal
 fn get_decimal(src: &mut Cursor<&[u8]>) -> Result<u64, Error> {
     use atoi::atoi;
 
@@ -256,19 +233,14 @@ fn get_decimal(src: &mut Cursor<&[u8]>) -> Result<u64, Error> {
     atoi::<u64>(line).ok_or_else(|| "protocol error; invalid frame format".into())
 }
 
-/// Find a line
 fn get_line<'a>(src: &mut Cursor<&'a [u8]>) -> Result<&'a [u8], Error> {
-    // Scan the bytes directly
     let start = src.position() as usize;
-    // Scan to the second to last byte
     let end = src.get_ref().len() - 1;
 
     for i in start..end {
         if src.get_ref()[i] == b'\r' && src.get_ref()[i + 1] == b'\n' {
-            // We found a line, update the position to be *after* the \n
             src.set_position((i + 2) as u64);
 
-            // Return the line
             return Ok(&src.get_ref()[start..i]);
         }
     }

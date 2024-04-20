@@ -1,7 +1,7 @@
 use anyhow::bail;
 use bytes::Bytes;
 
-use crate::{connection::Connection, frame::Frame, parse::Parse, store::Store};
+use crate::{comms::Comms, frame::Frame, parse::Parse, store::Store};
 
 #[derive(Debug, Default)]
 pub struct Info {
@@ -18,7 +18,7 @@ impl Info {
         Ok(Info::new(kind.into()))
     }
 
-    pub(crate) async fn apply(self, dst: &mut Connection, store: &Store) -> anyhow::Result<()> {
+    pub(crate) async fn apply<C: Comms>(self, comms: &mut C, store: &Store) -> anyhow::Result<()> {
         let info = crate::info::Info::from_store(&store)?;
 
         let bulk_string = match info.replication.role.as_str() {
@@ -36,6 +36,6 @@ impl Info {
             _ => bail!("Invalid role"),
         };
         let response = Frame::Bulk(bulk_string.into());
-        dst.write_frame(&response).await.map_err(|e| e.into())
+        comms.write_frame(&response).await.map_err(|e| e.into())
     }
 }

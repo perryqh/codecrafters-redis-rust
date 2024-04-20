@@ -1,4 +1,4 @@
-use crate::{connection::Connection, frame::Frame};
+use crate::{comms::Comms, frame::Frame};
 
 #[derive(Debug)]
 pub struct Unknown {
@@ -22,9 +22,9 @@ impl Unknown {
     /// Responds to the client, indicating the command is not recognized.
     ///
     /// This usually means the command is not yet implemented by `mini-redis`.
-    pub(crate) async fn apply(self, dst: &mut Connection) -> anyhow::Result<()> {
+    pub(crate) async fn apply<C: Comms>(self, comms: &mut C) -> anyhow::Result<()> {
         let response = Frame::Error(format!("ERR unknown command '{}'", self.command_name));
-        dst.write_frame(&response).await?;
+        comms.write_frame(&response).await?;
         Ok(())
     }
 }

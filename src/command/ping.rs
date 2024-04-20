@@ -1,16 +1,11 @@
 use bytes::Bytes;
 
 use crate::{
-    connection::Connection,
+    comms::Comms,
     frame::Frame,
     parse::{Parse, ParseError},
 };
 
-/// Returns PONG if no argument is provided, otherwise
-/// return a copy of the argument as a bulk.
-///
-/// This command is often used to test if a connection
-/// is still alive, or to measure latency.
 #[derive(Debug, Default)]
 pub struct Ping {
     /// optional message to be returned
@@ -30,13 +25,13 @@ impl Ping {
         }
     }
 
-    pub(crate) async fn apply(self, dst: &mut Connection) -> anyhow::Result<()> {
+    pub(crate) async fn apply<C: Comms>(self, comms: &mut C) -> anyhow::Result<()> {
         let response = match self.msg {
             None => Frame::Simple("PONG".to_string()),
             Some(msg) => Frame::Bulk(msg),
         };
 
-        dst.write_frame(&response).await?;
+        comms.write_frame(&response).await?;
 
         Ok(())
     }

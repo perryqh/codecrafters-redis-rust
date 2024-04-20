@@ -1,6 +1,6 @@
 use bytes::Bytes;
 
-use crate::{connection::Connection, frame::Frame, parse::Parse, store::Store};
+use crate::{comms::Comms, frame::Frame, parse::Parse, store::Store};
 
 #[derive(Debug, Default)]
 pub struct Get {
@@ -17,16 +17,16 @@ impl Get {
         Ok(Get::new(msg.into()))
     }
 
-    pub(crate) async fn apply(self, dst: &mut Connection, store: &Store) -> anyhow::Result<()> {
+    pub(crate) async fn apply<C: Comms>(self, comms: &mut C, store: &Store) -> anyhow::Result<()> {
         let value = store.get(self.key);
         match value {
             Some(value) => {
                 let response = Frame::Bulk(value);
-                dst.write_frame(&response).await.map_err(|e| e.into())
+                comms.write_frame(&response).await.map_err(|e| e.into())
             }
             None => {
                 let response = Frame::Null;
-                dst.write_frame(&response).await.map_err(|e| e.into())
+                comms.write_frame(&response).await.map_err(|e| e.into())
             }
         }
     }

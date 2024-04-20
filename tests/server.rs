@@ -1,20 +1,9 @@
+use redis_starter_rust::array_of_bulks;
 use redis_starter_rust::info::DEFAULT_MASTER_REPLID;
-use redis_starter_rust::store::Store;
-use redis_starter_rust::{array_of_bulks, server};
-use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
-
-async fn start_server() -> (SocketAddr, Store) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let store = redis_starter_rust::store::Store::new();
-    let return_store = store.clone();
-
-    tokio::spawn(async move { server::run(listener, store.clone()).await });
-
-    (addr, return_store)
-}
+use tokio::net::TcpStream;
+mod common;
+use common::start_server;
 
 #[tokio::test]
 async fn send_error_unknown_command() {

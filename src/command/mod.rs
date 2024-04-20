@@ -1,4 +1,4 @@
-use crate::{connection::Connection, frame::Frame, parse::Parse, store::Store};
+use crate::{comms::Comms, frame::Frame, parse::Parse, store::Store};
 pub mod ping;
 use anyhow::Context;
 use ping::Ping;
@@ -50,21 +50,16 @@ impl Command {
         Ok(command)
     }
 
-    pub async fn apply(
-        self,
-        store: &Store,
-        connection: &mut Connection,
-        respond: bool,
-    ) -> anyhow::Result<()> {
+    pub async fn apply<C: Comms>(self, store: &Store, comms: &mut C) -> anyhow::Result<()> {
         match self {
-            Command::Ping(cmd) => cmd.apply(connection).await,
-            Command::Echo(cmd) => cmd.apply(connection).await,
-            Command::Unknown(cmd) => cmd.apply(connection).await,
-            Command::Get(cmd) => cmd.apply(connection, store).await,
-            Command::Set(cmd) => cmd.apply(connection, store, respond).await,
-            Command::Info(cmd) => cmd.apply(connection, store).await,
-            Command::ReplConf(cmd) => cmd.apply(connection, store).await,
-            Command::Psync(cmd) => cmd.apply(connection, store).await,
+            Command::Echo(cmd) => cmd.apply(comms).await,
+            Command::Unknown(cmd) => cmd.apply(comms).await,
+            Command::Get(cmd) => cmd.apply(comms, store).await,
+            Command::Set(cmd) => cmd.apply(comms, store).await,
+            Command::Info(cmd) => cmd.apply(comms, store).await,
+            Command::ReplConf(cmd) => cmd.apply(comms, store).await,
+            Command::Ping(cmd) => cmd.apply(comms).await,
+            Command::Psync(cmd) => cmd.apply(comms, store).await,
         }
     }
 }

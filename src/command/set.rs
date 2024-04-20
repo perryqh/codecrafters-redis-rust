@@ -3,11 +3,7 @@ use std::time::Duration;
 use bytes::Bytes;
 
 use crate::{
-    connection::Connection,
-    frame::Frame,
-    parse::Parse,
-    publisher::{publish, Action},
-    store::{Store, DEFAULT_EXPIRY},
+    comms::Comms, frame::Frame, parse::Parse, publisher::{publish, Action}, store::{Store, DEFAULT_EXPIRY}
 };
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -37,12 +33,7 @@ impl Set {
         Ok(Set::new(key.into(), value.into(), expiry))
     }
 
-    pub(crate) async fn apply(
-        self,
-        dst: &mut Connection,
-        store: &Store,
-        respond: bool,
-    ) -> anyhow::Result<()> {
+    pub(crate) async fn apply<C: Comms>(self, comms: &mut C, store: &Store) -> anyhow::Result<()> {
         let ttl = self.expiry.unwrap_or(DEFAULT_EXPIRY);
         let cloned_self = self.clone();
 
@@ -55,9 +46,9 @@ impl Set {
         };
         publish(action).await?;
 
-        if respond {
+        if !comms.is_follower_receiving_sync_request() {
             let response = Frame::OK;
-            dst.write_frame(&response).await.map_err(|e| e.into())
+            comms.write_frame(&response).await.map_err(|e| e.into())
         } else {
             Ok(())
         }

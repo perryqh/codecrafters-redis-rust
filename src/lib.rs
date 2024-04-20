@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod command;
+pub mod comms;
 pub mod connection;
 pub mod frame;
 pub mod info;
