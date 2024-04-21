@@ -229,6 +229,26 @@ async fn repl_conf_capabilities() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn repl_get_ack() -> anyhow::Result<()> {
+    let (addr, _store) = start_server().await;
+
+    let mut stream = TcpStream::connect(addr).await.unwrap();
+
+    stream
+        .write_all(array_of_bulks!("REPLCONF", "getack", "*"))
+        .await
+        .unwrap();
+
+    let mut response = [0; 34];
+
+    stream.read_exact(&mut response).await.unwrap();
+
+    assert_eq!(array_of_bulks!("REPLCONF", "ACK", "0"), &response);
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_psync() -> anyhow::Result<()> {
     let (addr, _store) = start_server().await;
 
