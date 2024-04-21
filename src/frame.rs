@@ -83,7 +83,7 @@ impl Frame {
                                 _ => Ok(()),
                             }
                         }
-                        Err(_) => return Err(Error::Incomplete),
+                        Err(_) => Err(Error::Incomplete),
                     }
                 }
             }

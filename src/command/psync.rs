@@ -20,7 +20,7 @@ impl Psync {
     }
 
     pub(crate) async fn apply<C: Comms>(self, comms: &mut C, store: &Store) -> anyhow::Result<()> {
-        let info = crate::info::Info::from_store(&store)?;
+        let info = crate::info::Info::from_store(store)?;
 
         if info.is_replica() {
             let error = Frame::Error("Not a master server".to_string());

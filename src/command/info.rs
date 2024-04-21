@@ -19,7 +19,7 @@ impl Info {
     }
 
     pub(crate) async fn apply<C: Comms>(self, comms: &mut C, store: &Store) -> anyhow::Result<()> {
-        let info = crate::info::Info::from_store(&store)?;
+        let info = crate::info::Info::from_store(store)?;
 
         let bulk_string = match info.replication.role.as_str() {
             "master" => {

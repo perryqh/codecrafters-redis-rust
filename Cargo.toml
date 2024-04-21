@@ -27,3 +27,4 @@ clap = { version = "~4.0", features = ["derive"] }                             #
 tokio = { version = "1.23.0", features = ["full"] } # async networking
 base64 = "0.22.0"                                   # base64 encoding
 once_cell = "1.8.0"                                 # lazy statics
+tokio-test = "0.4.4"

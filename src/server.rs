@@ -1,9 +1,8 @@
-
-
 use tokio::net::TcpListener;
 
 use crate::{
-    command::Command, comms::Comms, connection::Connection, info::Info, publisher, replicator::Replicator, store::Store
+    command::Command, comms::Comms, connection::Connection, info::Info, publisher,
+    replicator::Replicator, store::Store,
 };
 
 pub async fn run(listener: TcpListener, store: Store) -> anyhow::Result<()> {
@@ -54,8 +53,8 @@ impl Handler {
             }
             command.apply(&store, &mut comms).await?;
             if subscriber {
-               let _ = publisher::add_connection(comms, &store).await;
-                
+                let _ = publisher::add_connection(comms, &store).await;
+
                 // TODO: for some reason, if we attempt to read another frame, the replicant errors out
                 // specifically: `0 == self.stream.read_buf(&mut self.buffer).await?`
                 break;

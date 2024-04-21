@@ -17,7 +17,9 @@ pub struct Connection<R: AsyncReadExt + Unpin, W: AsyncWriteExt + Unpin> {
 }
 
 #[async_trait::async_trait]
-impl<R: AsyncReadExt + Unpin + Send + Sync, W: AsyncWriteExt + Unpin + Send + Sync> Comms for Connection<R, W> {
+impl<R: AsyncReadExt + Unpin + Send + Sync, W: AsyncWriteExt + Unpin + Send + Sync> Comms
+    for Connection<R, W>
+{
     async fn write_frame(&mut self, frame: &Frame) -> io::Result<()> {
         match frame {
             Frame::Array(val) => {
